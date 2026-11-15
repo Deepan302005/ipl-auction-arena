@@ -138,6 +138,7 @@ export const TeamLogo = ({
       className={`relative inline-flex items-center justify-center shrink-0 ${containerSize} ${
         showGlow ? 'filter drop-shadow-[0_0_8px_rgba(253,185,19,0.3)]' : ''
       } ${className}`}
+      style={{ maxWidth: '100%' }}
       title={displayName}
     >
       <img
@@ -145,6 +146,7 @@ export const TeamLogo = ({
         alt={displayName}
         onError={() => setImgError(true)}
         className="w-full h-full object-contain filter drop-shadow-md select-none transition-transform duration-200"
+        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
         loading="lazy"
       />
     </div>

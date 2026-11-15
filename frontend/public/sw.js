@@ -2,9 +2,10 @@
  * Service Worker for IPL Auction Arena PWA
  * Caches application shell for fast responsive loading on mobile devices.
  * NEVER caches API requests or live WebSocket connections to ensure 100% auction state integrity.
+ * Uses Network-First for HTML and app assets to ensure team logos and code updates are immediately visible.
  */
 
-const CACHE_NAME = 'ipl-auction-arena-v1';
+const CACHE_NAME = 'ipl-auction-arena-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -14,12 +15,12 @@ const STATIC_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_ASSETS);
     })
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -32,9 +33,8 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
@@ -49,35 +49,56 @@ self.addEventListener('fetch', (event) => {
     return; // Pass through directly to network
   }
 
-  // Network-first for HTML navigation, cache-first for static assets
-  if (event.request.mode === 'navigate') {
+  // Network-first with cache fallback for HTML navigation and app assets
+  if (
+    event.request.mode === 'navigate' ||
+    url.pathname.startsWith('/assets/') ||
+    url.pathname.endsWith('.html') ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css')
+  ) {
     event.respondWith(
-      fetch(event.request).catch(() => {
-        return caches.match('/index.html');
-      })
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200 && url.origin === location.origin) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, clone);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match(event.request).then((cached) => {
+            if (cached) return cached;
+            if (event.request.mode === 'navigate') {
+              return caches.match('/index.html');
+            }
+            return null;
+          });
+        })
     );
     return;
   }
 
+  // Stale-while-revalidate for other static assets (icons, manifest)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).then((response) => {
-        // Cache successful local assets
+      const fetchPromise = fetch(event.request).then((networkResponse) => {
         if (
-          response &&
-          response.status === 200 &&
+          networkResponse &&
+          networkResponse.status === 200 &&
           url.origin === location.origin
         ) {
-          const clone = response.clone();
+          const clone = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, clone);
           });
         }
-        return response;
-      });
+        return networkResponse;
+      }).catch(() => null);
+
+      return cachedResponse || fetchPromise;
     })
   );
 });
