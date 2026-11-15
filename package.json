@@ -1,0 +1,26 @@
+{
+  "name": "ipl-auction-arena",
+  "version": "1.0.0",
+  "description": "Real-time multiplayer IPL Auction Arena with zero-auth guest sessions and responsive UI",
+  "main": "backend/server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "start": "node backend/server.js",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "seed:atlas": "node backend/seeds/syncAtlasDatabase.js",
+    "test:security": "node scripts/verify_guest_security.js",
+    "test:multiplayer": "node scripts/test_pc_android_multiplayer.js",
+    "test:responsive": "node backend/tests/verify_responsiveness.js",
+    "test:directplay": "node scripts/verify_guest_direct_play.js",
+    "test:smoke": "node scripts/test_deployment_smoke.js",
+    "test:all": "npm run test:security && npm run test:multiplayer && npm run test:responsive && npm run test:directplay && npm run test:smoke"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.4"
+  }
+}
