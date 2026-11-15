@@ -22,6 +22,10 @@ export const SeasonSelectionControl = ({
   selectedStartSeason = 2008,
   selectedEndSeason = 2026,
   selectedSeasons = [],
+  auctionPoolFilter = 'all',
+  filterYoungOnly = false,
+  filterUncappedOnly = false,
+  filterNonDebutantsOnly = false,
   onChange,
   disabled = false
 }) => {
@@ -31,6 +35,11 @@ export const SeasonSelectionControl = ({
   const [individualSeasons, setIndividualSeasons] = useState(
     Array.isArray(selectedSeasons) && selectedSeasons.length > 0 ? selectedSeasons : [2024, 2025, 2026]
   );
+  const [poolFilter, setPoolFilter] = useState(auctionPoolFilter || 'all');
+  const [youngOnly, setYoungOnly] = useState(filterYoungOnly || false);
+  const [uncappedOnly, setUncappedOnly] = useState(filterUncappedOnly || false);
+  const [nonDebutantsOnly, setNonDebutantsOnly] = useState(filterNonDebutantsOnly || false);
+
   const [preview, setPreview] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
 
@@ -40,7 +49,11 @@ export const SeasonSelectionControl = ({
     if (selectedStartSeason && selectedStartSeason !== startSeason) setStartSeason(selectedStartSeason);
     if (selectedEndSeason && selectedEndSeason !== endSeason) setEndSeason(selectedEndSeason);
     if (Array.isArray(selectedSeasons)) setIndividualSeasons(selectedSeasons);
-  }, [seasonMode, selectedStartSeason, selectedEndSeason, selectedSeasons]);
+    if (auctionPoolFilter && auctionPoolFilter !== poolFilter) setPoolFilter(auctionPoolFilter);
+    if (filterYoungOnly !== undefined) setYoungOnly(filterYoungOnly);
+    if (filterUncappedOnly !== undefined) setUncappedOnly(filterUncappedOnly);
+    if (filterNonDebutantsOnly !== undefined) setNonDebutantsOnly(filterNonDebutantsOnly);
+  }, [seasonMode, selectedStartSeason, selectedEndSeason, selectedSeasons, auctionPoolFilter, filterYoungOnly, filterUncappedOnly, filterNonDebutantsOnly]);
 
   // Fetch live eligible player preview count whenever settings change
   useEffect(() => {
@@ -52,7 +65,11 @@ export const SeasonSelectionControl = ({
           seasonMode: mode,
           selectedStartSeason: startSeason,
           selectedEndSeason: endSeason,
-          selectedSeasons: individualSeasons
+          selectedSeasons: individualSeasons,
+          auctionPoolFilter: poolFilter,
+          filterYoungOnly: youngOnly,
+          filterUncappedOnly: uncappedOnly,
+          filterNonDebutantsOnly: nonDebutantsOnly
         });
         if (active && res.success && res.breakdown) {
           setPreview(res.breakdown);
@@ -66,23 +83,27 @@ export const SeasonSelectionControl = ({
 
     fetchPreview();
     return () => { active = false; };
-  }, [mode, startSeason, endSeason, individualSeasons]);
+  }, [mode, startSeason, endSeason, individualSeasons, poolFilter, youngOnly, uncappedOnly, nonDebutantsOnly]);
 
   // Notify parent of state changes
-  const notifyChange = (newMode, newStart, newEnd, newIndividual) => {
+  const notifyChange = (newMode, newStart, newEnd, newIndividual, newPoolFilter, newYoung, newUncapped, newNonDebutants) => {
     if (onChange) {
       onChange({
         seasonMode: newMode,
         selectedStartSeason: Number(newStart),
         selectedEndSeason: Number(newEnd),
-        selectedSeasons: newIndividual
+        selectedSeasons: newIndividual,
+        auctionPoolFilter: newPoolFilter !== undefined ? newPoolFilter : poolFilter,
+        filterYoungOnly: newYoung !== undefined ? newYoung : youngOnly,
+        filterUncappedOnly: newUncapped !== undefined ? newUncapped : uncappedOnly,
+        filterNonDebutantsOnly: newNonDebutants !== undefined ? newNonDebutants : nonDebutantsOnly
       });
     }
   };
 
   const handleModeChange = (newMode) => {
     setMode(newMode);
-    notifyChange(newMode, startSeason, endSeason, individualSeasons);
+    notifyChange(newMode, startSeason, endSeason, individualSeasons, poolFilter, youngOnly, uncappedOnly, nonDebutantsOnly);
   };
 
   const handleStartChange = (val) => {
@@ -90,7 +111,7 @@ export const SeasonSelectionControl = ({
     const e = Math.max(s, endSeason);
     setStartSeason(s);
     setEndSeason(e);
-    notifyChange(mode, s, e, individualSeasons);
+    notifyChange(mode, s, e, individualSeasons, poolFilter, youngOnly, uncappedOnly, nonDebutantsOnly);
   };
 
   const handleEndChange = (val) => {
@@ -98,7 +119,7 @@ export const SeasonSelectionControl = ({
     const s = Math.min(e, startSeason);
     setStartSeason(s);
     setEndSeason(e);
-    notifyChange(mode, s, e, individualSeasons);
+    notifyChange(mode, s, e, individualSeasons, poolFilter, youngOnly, uncappedOnly, nonDebutantsOnly);
   };
 
   const toggleIndividualSeason = (year) => {
@@ -275,12 +296,115 @@ export const SeasonSelectionControl = ({
         </div>
       )}
 
+      {/* Auction Nominees & Pool Classification Filter */}
+      <div className="p-3.5 bg-navy-950/90 border border-navy-800 rounded-xl space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+            <Filter className="w-3.5 h-3.5 text-amber-400" />
+            Auction Nominee & Talent Filter
+          </label>
+          <span className="text-[11px] text-amber-400/90 font-medium">
+            2008–2026 Historical Archives
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+          {[
+            { id: 'all', label: 'All Players', desc: 'Debuts & Nominees' },
+            { id: 'played-matches-only', label: 'Match Players Only', desc: 'IPL Debutants' },
+            { id: 'nominees-only', label: 'Nominees Only', desc: 'Non-Debutants' },
+            { id: 'young-uncapped', label: 'Young & Uncapped', desc: '≤23 Emerging' },
+            { id: 'shortlisted-only', label: 'Shortlisted Only', desc: 'Auction Lists' },
+            { id: 'sold-only', label: 'Sold Players Only', desc: 'Historical Buys' },
+            { id: 'unsold-only', label: 'Unsold Players Only', desc: 'Historical Unsold' }
+          ].map((item) => {
+            const isSelected = poolFilter === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                disabled={disabled}
+                onClick={() => {
+                  setPoolFilter(item.id);
+                  notifyChange(mode, startSeason, endSeason, individualSeasons, item.id, youngOnly, uncappedOnly, nonDebutantsOnly);
+                }}
+                className={`p-2 rounded-lg border text-left transition-all ${
+                  isSelected
+                    ? 'bg-blue-600/30 border-blue-400 text-white font-bold ring-1 ring-blue-400/50'
+                    : 'bg-navy-900/60 border-navy-800 text-slate-400 hover:text-slate-200'
+                } disabled:opacity-50`}
+              >
+                <div className="font-bold text-xs truncate leading-tight">{item.label}</div>
+                <div className="text-[10px] text-slate-500 truncate">{item.desc}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Granular Checkbox Toggles */}
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-navy-800/60 text-xs">
+          <label className="flex items-center gap-2 cursor-pointer select-none text-slate-300 hover:text-white">
+            <input
+              type="checkbox"
+              disabled={disabled}
+              checked={youngOnly}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setYoungOnly(checked);
+                notifyChange(mode, startSeason, endSeason, individualSeasons, poolFilter, checked, uncappedOnly, nonDebutantsOnly);
+              }}
+              className="rounded bg-navy-900 border-navy-700 text-blue-600 focus:ring-0 cursor-pointer"
+            />
+            <span>Emerging Young (≤23 DOB)</span>
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer select-none text-slate-300 hover:text-white">
+            <input
+              type="checkbox"
+              disabled={disabled}
+              checked={uncappedOnly}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setUncappedOnly(checked);
+                notifyChange(mode, startSeason, endSeason, individualSeasons, poolFilter, youngOnly, checked, nonDebutantsOnly);
+              }}
+              className="rounded bg-navy-900 border-navy-700 text-blue-600 focus:ring-0 cursor-pointer"
+            />
+            <span>Uncapped Players Only</span>
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer select-none text-slate-300 hover:text-white">
+            <input
+              type="checkbox"
+              disabled={disabled}
+              checked={nonDebutantsOnly}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setNonDebutantsOnly(checked);
+                notifyChange(mode, startSeason, endSeason, individualSeasons, poolFilter, youngOnly, uncappedOnly, checked);
+              }}
+              className="rounded bg-navy-900 border-navy-700 text-blue-600 focus:ring-0 cursor-pointer"
+            />
+            <span>Include Non-Debutants</span>
+          </label>
+        </div>
+      </div>
+
       {/* Live Pool Breakdown Summary Banner */}
       {preview && (
         <div className="p-3 bg-navy-950/80 border border-navy-800/80 rounded-xl text-xs flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3 text-slate-300 flex-wrap">
             <span>🇮🇳 Indian: <strong className="text-white">{preview.indian}</strong></span>
             <span>✈️ Overseas: <strong className="text-amber-400">{preview.overseas}</strong></span>
+            {preview.uncapped !== undefined && (
+              <span>⚡ Uncapped: <strong className="text-purple-300">{preview.uncapped}</strong></span>
+            )}
+            {preview.young !== undefined && (
+              <span>🌟 Young (≤23): <strong className="text-amber-300">{preview.young}</strong></span>
+            )}
+            {preview.nonDebutants !== undefined && (
+              <span>📋 Nominees: <strong className="text-sky-300">{preview.nonDebutants}</strong></span>
+            )}
             <span className="hidden sm:inline text-slate-600">|</span>
             <span className="text-slate-400 hidden sm:inline">
               🏏 Batters: <strong className="text-slate-200">{preview.roles?.Batter || 0}</strong> • 

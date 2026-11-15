@@ -31,6 +31,9 @@ export const PlayerPoolModal = ({
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [countryFilter, setCountryFilter] = useState('all');
+  const [uncappedFilter, setUncappedFilter] = useState(false);
+  const [youngFilter, setYoungFilter] = useState(false);
+  const [neverPlayedFilter, setNeverPlayedFilter] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState(null);
   const [totalEligible, setTotalEligible] = useState(room?.auctionQueueCount || 0);
 
@@ -45,7 +48,10 @@ export const PlayerPoolModal = ({
       const res = await api.getRoomEligiblePlayers(room.roomCode, {
         search,
         role: roleFilter,
-        country: countryFilter
+        country: countryFilter,
+        uncapped: uncappedFilter ? 'true' : undefined,
+        young: youngFilter ? 'true' : undefined,
+        neverPlayed: neverPlayedFilter ? 'true' : undefined
       });
       if (res.success) {
         setPlayers(res.data || []);
@@ -64,7 +70,7 @@ export const PlayerPoolModal = ({
     if (isOpen) {
       loadPlayers();
     }
-  }, [isOpen, room?.roomCode, search, roleFilter, countryFilter]);
+  }, [isOpen, room?.roomCode, search, roleFilter, countryFilter, uncappedFilter, youngFilter, neverPlayedFilter]);
 
   const handleSeasonChange = async (seasonPayload) => {
     if (!isHost || isAuctionLive) return;
@@ -233,6 +239,58 @@ export const PlayerPoolModal = ({
             </select>
           </div>
 
+          {/* Quick Filter Toggle Pills */}
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setUncappedFilter(false);
+                setYoungFilter(false);
+                setNeverPlayedFilter(false);
+              }}
+              className={`px-2.5 py-1 rounded-lg border font-semibold transition-all ${
+                !uncappedFilter && !youngFilter && !neverPlayedFilter
+                  ? 'bg-blue-600 text-white border-blue-400'
+                  : 'bg-navy-900 text-slate-400 border-navy-800 hover:text-white'
+              }`}
+            >
+              All Nominees
+            </button>
+            <button
+              type="button"
+              onClick={() => setUncappedFilter(!uncappedFilter)}
+              className={`px-2.5 py-1 rounded-lg border font-semibold transition-all ${
+                uncappedFilter
+                  ? 'bg-purple-600 text-white border-purple-400 shadow-sm'
+                  : 'bg-navy-900 text-slate-400 border-navy-800 hover:text-purple-300'
+              }`}
+            >
+              ⚡ Uncapped
+            </button>
+            <button
+              type="button"
+              onClick={() => setYoungFilter(!youngFilter)}
+              className={`px-2.5 py-1 rounded-lg border font-semibold transition-all ${
+                youngFilter
+                  ? 'bg-amber-500 text-navy-950 font-bold border-amber-400 shadow-sm'
+                  : 'bg-navy-900 text-slate-400 border-navy-800 hover:text-amber-300'
+              }`}
+            >
+              🌟 Young (≤23)
+            </button>
+            <button
+              type="button"
+              onClick={() => setNeverPlayedFilter(!neverPlayedFilter)}
+              className={`px-2.5 py-1 rounded-lg border font-semibold transition-all ${
+                neverPlayedFilter
+                  ? 'bg-sky-600 text-white border-sky-400 shadow-sm'
+                  : 'bg-navy-900 text-slate-400 border-navy-800 hover:text-sky-300'
+              }`}
+            >
+              📋 Non-Debutants Only
+            </button>
+          </div>
+
           {/* Bulk Action Buttons (Host Only) */}
           {isHost && !isAuctionLive && (
             <div className="flex items-center justify-between pt-2 border-t border-navy-800/80 flex-wrap gap-2 text-xs">
@@ -299,6 +357,21 @@ export const PlayerPoolModal = ({
                         }`}>
                           {p.country === 'Overseas' ? `✈️ ${p.nationality || 'Overseas'}` : '🇮🇳 India'}
                         </span>
+                        {p.isUncapped && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300 uppercase">
+                            Uncapped
+                          </span>
+                        )}
+                        {p.isYoungPlayer && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-400/15 border border-amber-400/30 text-amber-300 uppercase">
+                            Young ≤23
+                          </span>
+                        )}
+                        {p.hasPlayedIPL === false && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-500/15 border border-sky-500/30 text-sky-300 uppercase">
+                            Nominee
+                          </span>
+                        )}
                       </div>
 
                       <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-3 flex-wrap">

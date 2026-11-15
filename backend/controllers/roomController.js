@@ -9,6 +9,7 @@ const ALLOWED_BID_EXTENSIONS = [0, 3, 5, 10];
 const ALLOWED_AUCTION_MODES = ['standard', 'fast', 'marquee-first'];
 const ALLOWED_POOL_TYPES = ['all-time', 'season', 'multi-season', 'custom-only', 'curated'];
 const ALLOWED_SEASON_MODES = ['all-time', '2008-2015', '2016-2020', '2021-2026', 'range', 'individual'];
+const ALLOWED_AUCTION_POOL_FILTERS = ['all', 'played-matches-only', 'nominees-only', 'young-uncapped', 'shortlisted-only', 'sold-only', 'unsold-only'];
 
 const KNOWN_FRANCHISES = [
   'Chennai Super Kings', 'Sunrisers Hyderabad', 'Rajasthan Royals', 'Mumbai Indians',
@@ -148,6 +149,38 @@ const buildAuctionQueue = async (settings = {}) => {
   const effectiveSeasons = computeEffectiveSeasons(settings);
   if (Array.isArray(effectiveSeasons) && effectiveSeasons.length > 0) {
     filter.seasonsPlayed = { $in: effectiveSeasons };
+  }
+
+  // Auction Pool Mode & Nomination Filter
+  const poolFilter = settings.auctionPoolFilter || 'all';
+  if (poolFilter === 'played-matches-only') {
+    filter.hasPlayedIPL = true;
+  } else if (poolFilter === 'nominees-only') {
+    filter.hasPlayedIPL = false;
+  } else if (poolFilter === 'young-uncapped') {
+    filter.isUncapped = true;
+    filter.isYoungPlayer = true;
+  } else if (poolFilter === 'shortlisted-only') {
+    filter['auctionHistory.finalShortlistStatus'] = true;
+  } else if (poolFilter === 'sold-only') {
+    filter['auctionHistory.auctionResult'] = 'sold';
+  } else if (poolFilter === 'unsold-only') {
+    filter['auctionHistory.auctionResult'] = 'unsold';
+  }
+
+  if (settings.filterYoungOnly) {
+    filter.isYoungPlayer = true;
+  }
+  if (settings.filterUncappedOnly) {
+    filter.isUncapped = true;
+  }
+  if (settings.filterNonDebutantsOnly) {
+    filter.hasPlayedIPL = false;
+  }
+
+  // Selected Auction Years (e.g. [2024, 2025])
+  if (Array.isArray(settings.selectedAuctionYears) && settings.selectedAuctionYears.length > 0) {
+    filter['auctionHistory.auctionYear'] = { $in: settings.selectedAuctionYears };
   }
 
   // Excluded player IDs filtering
@@ -345,6 +378,11 @@ const createRoom = async (req, res, next) => {
       selectedSeasons,
       customIncludedPlayers,
       customExcludedPlayers,
+      auctionPoolFilter: settings?.auctionPoolFilter && ALLOWED_AUCTION_POOL_FILTERS.includes(settings.auctionPoolFilter) ? settings.auctionPoolFilter : 'all',
+      selectedAuctionYears: Array.isArray(settings?.selectedAuctionYears) ? settings.selectedAuctionYears.map(Number) : [],
+      filterYoungOnly: !!settings?.filterYoungOnly,
+      filterUncappedOnly: !!settings?.filterUncappedOnly,
+      filterNonDebutantsOnly: !!settings?.filterNonDebutantsOnly,
       selectedCategories: settings?.selectedCategories || ['Batsman', 'Bowler', 'All-Rounder', 'Wicket-Keeper'],
       includeRetired: settings?.includeRetired !== undefined ? !!settings.includeRetired : true,
       includeCustom: settings?.includeCustom !== undefined ? !!settings.includeCustom : true,
@@ -1387,6 +1425,29 @@ const updateRoomSettings = async (req, res, next) => {
       if (settings.allowMultipleFranchisesPerUser !== undefined) {
         room.settings.allowMultipleFranchisesPerUser = !!settings.allowMultipleFranchisesPerUser;
       }
+      if (settings.auctionPoolFilter !== undefined) {
+        if (!ALLOWED_AUCTION_POOL_FILTERS.includes(settings.auctionPoolFilter)) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid auctionPoolFilter. Allowed: ${ALLOWED_AUCTION_POOL_FILTERS.join(', ')}`
+          });
+        }
+        room.settings.auctionPoolFilter = settings.auctionPoolFilter;
+      }
+      if (settings.selectedAuctionYears !== undefined) {
+        room.settings.selectedAuctionYears = Array.isArray(settings.selectedAuctionYears)
+          ? settings.selectedAuctionYears.map(Number)
+          : [];
+      }
+      if (settings.filterYoungOnly !== undefined) {
+        room.settings.filterYoungOnly = !!settings.filterYoungOnly;
+      }
+      if (settings.filterUncappedOnly !== undefined) {
+        room.settings.filterUncappedOnly = !!settings.filterUncappedOnly;
+      }
+      if (settings.filterNonDebutantsOnly !== undefined) {
+        room.settings.filterNonDebutantsOnly = !!settings.filterNonDebutantsOnly;
+      }
       if (settings.incrementLadderType !== undefined) {
         if (!['official', 'custom'].includes(settings.incrementLadderType)) {
           return res.status(400).json({
@@ -1398,7 +1459,18 @@ const updateRoomSettings = async (req, res, next) => {
       }
     }
 
-    if (rebuildQueue || settings?.seasonMode !== undefined || settings?.selectedStartSeason !== undefined || settings?.selectedEndSeason !== undefined || settings?.selectedSeasons !== undefined) {
+    if (
+      rebuildQueue ||
+      settings?.seasonMode !== undefined ||
+      settings?.selectedStartSeason !== undefined ||
+      settings?.selectedEndSeason !== undefined ||
+      settings?.selectedSeasons !== undefined ||
+      settings?.auctionPoolFilter !== undefined ||
+      settings?.selectedAuctionYears !== undefined ||
+      settings?.filterYoungOnly !== undefined ||
+      settings?.filterUncappedOnly !== undefined ||
+      settings?.filterNonDebutantsOnly !== undefined
+    ) {
       room.auctionQueue = await buildAuctionQueue(room.settings);
     }
 
@@ -1457,10 +1529,35 @@ const previewPlayerPool = async (req, res, next) => {
       filter.isCustom = { $ne: true };
     }
 
-    const [totalCount, players, roleCounts, overseasCount] = await Promise.all([
+    // Auction Pool Mode & Nomination Filter
+    const poolFilter = settings.auctionPoolFilter || 'all';
+    if (poolFilter === 'played-matches-only') {
+      filter.hasPlayedIPL = true;
+    } else if (poolFilter === 'nominees-only') {
+      filter.hasPlayedIPL = false;
+    } else if (poolFilter === 'young-uncapped') {
+      filter.isUncapped = true;
+      filter.isYoungPlayer = true;
+    } else if (poolFilter === 'shortlisted-only') {
+      filter['auctionHistory.finalShortlistStatus'] = true;
+    } else if (poolFilter === 'sold-only') {
+      filter['auctionHistory.auctionResult'] = 'sold';
+    } else if (poolFilter === 'unsold-only') {
+      filter['auctionHistory.auctionResult'] = 'unsold';
+    }
+
+    if (settings.filterYoungOnly) filter.isYoungPlayer = true;
+    if (settings.filterUncappedOnly) filter.isUncapped = true;
+    if (settings.filterNonDebutantsOnly) filter.hasPlayedIPL = false;
+
+    if (Array.isArray(settings.selectedAuctionYears) && settings.selectedAuctionYears.length > 0) {
+      filter['auctionHistory.auctionYear'] = { $in: settings.selectedAuctionYears };
+    }
+
+    const [totalCount, players, roleCounts, overseasCount, uncappedCount, youngCount, nonDebutantsCount] = await Promise.all([
       Player.countDocuments(filter),
       Player.find(filter)
-        .select('name role country nationality basePriceCr seasonsPlayed isCapped image iplStats')
+        .select('name role country nationality basePriceCr seasonsPlayed isCapped isUncapped isYoungPlayer hasPlayedIPL dateOfBirth image iplStats auctionHistory')
         .sort({ basePriceCr: -1, 'iplStats.runs': -1, 'iplStats.wickets': -1, name: 1 })
         .limit(100)
         .lean(),
@@ -1468,13 +1565,19 @@ const previewPlayerPool = async (req, res, next) => {
         { $match: filter },
         { $group: { _id: '$role', count: { $sum: 1 } } }
       ]),
-      Player.countDocuments({ ...filter, country: 'Overseas' })
+      Player.countDocuments({ ...filter, country: 'Overseas' }),
+      Player.countDocuments({ ...filter, isUncapped: true }),
+      Player.countDocuments({ ...filter, isYoungPlayer: true }),
+      Player.countDocuments({ ...filter, hasPlayedIPL: false })
     ]);
 
     const breakdown = {
       total: totalCount,
       overseas: overseasCount,
       indian: Math.max(0, totalCount - overseasCount),
+      uncapped: uncappedCount,
+      young: youngCount,
+      nonDebutants: nonDebutantsCount,
       roles: {}
     };
 
@@ -1508,7 +1611,7 @@ const getRoomEligiblePlayers = async (req, res, next) => {
       return res.status(404).json({ success: false, message: `Room '${roomCode}' not found` });
     }
 
-    const { role, country, search } = req.query;
+    const { role, country, search, uncapped, young, neverPlayed, auctionResult } = req.query;
     const settings = room.settings || {};
     const effectiveSeasons = computeEffectiveSeasons(settings);
 
@@ -1531,6 +1634,19 @@ const getRoomEligiblePlayers = async (req, res, next) => {
       filter.country = country;
     }
 
+    if (uncapped === 'true') {
+      filter.isUncapped = true;
+    }
+    if (young === 'true') {
+      filter.isYoungPlayer = true;
+    }
+    if (neverPlayed === 'true') {
+      filter.hasPlayedIPL = false;
+    }
+    if (auctionResult && auctionResult !== 'all') {
+      filter['auctionHistory.auctionResult'] = auctionResult;
+    }
+
     if (search && search.trim()) {
       filter.name = { $regex: search.trim(), $options: 'i' };
     }
@@ -1540,7 +1656,7 @@ const getRoomEligiblePlayers = async (req, res, next) => {
     const includedSet = new Set((settings.customIncludedPlayers || []).map(id => id.toString()));
 
     const players = await Player.find(filter)
-      .select('name role country nationality basePriceCr seasonsPlayed isCapped image iplStats')
+      .select('name role country nationality basePriceCr seasonsPlayed isCapped isUncapped isYoungPlayer hasPlayedIPL dateOfBirth image iplStats auctionHistory')
       .sort({ basePriceCr: -1, 'iplStats.runs': -1, name: 1 })
       .limit(300)
       .lean();
@@ -1673,5 +1789,6 @@ module.exports = {
   ALLOWED_BID_EXTENSIONS,
   ALLOWED_AUCTION_MODES,
   ALLOWED_POOL_TYPES,
-  ALLOWED_SEASON_MODES
+  ALLOWED_SEASON_MODES,
+  ALLOWED_AUCTION_POOL_FILTERS
 };

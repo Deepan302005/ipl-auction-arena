@@ -10,6 +10,7 @@ const Team = require('../models/Team');
 const Player = require('../models/Player');
 const User = require('../models/User');
 const Room = require('../models/Room');
+const AuctionRecord = require('../models/AuctionRecord');
 
 /**
  * Idempotent Production Database Synchronizer
@@ -83,6 +84,45 @@ const syncAtlasDatabase = async () => {
       console.log(`   ✅ Expanded Historical Player Records synchronized (Total in DB: ${finalPlayers}).`);
     }
 
+    // 2.1 Sync Historical Auction Records (2008-2026)
+    const auctionRecordsFile = path.join(__dirname, '../data/historical_auction_records.json');
+    if (fs.existsSync(auctionRecordsFile)) {
+      const rawRecords = JSON.parse(fs.readFileSync(auctionRecordsFile, 'utf8'));
+      console.log(`\n2.1 Historical Auction Records Synchronization (${rawRecords.length} records):`);
+
+      // Pre-map players to objectIds
+      const allDbPlayers = await Player.find({}, '_id name').lean();
+      const playerNameToId = new Map();
+      for (const p of allDbPlayers) {
+        playerNameToId.set(p.name.toLowerCase().trim(), p._id);
+      }
+
+      const auctionOps = [];
+      for (const rec of rawRecords) {
+        const playerId = playerNameToId.get(rec.playerName.toLowerCase().trim());
+        if (!playerId) continue;
+
+        auctionOps.push({
+          updateOne: {
+            filter: { playerName: rec.playerName, auctionYear: rec.auctionYear },
+            update: {
+              $set: {
+                ...rec,
+                player: playerId
+              }
+            },
+            upsert: true
+          }
+        });
+      }
+
+      if (auctionOps.length > 0) {
+        await AuctionRecord.bulkWrite(auctionOps);
+        const finalAuctionRecords = await AuctionRecord.countDocuments();
+        console.log(`   ✅ Historical Auction Records synchronized (Total in DB: ${finalAuctionRecords}).`);
+      }
+    }
+
     // 3. Ensure Database Indexes
     console.log('\n3. Building & Verifying Critical Indexes:');
     const ensureIndexes = async (model, name) => {
@@ -101,6 +141,7 @@ const syncAtlasDatabase = async () => {
 
     await ensureIndexes(Team, 'Team');
     await ensureIndexes(Player, 'Player');
+    await ensureIndexes(AuctionRecord, 'AuctionRecord');
     await ensureIndexes(User, 'User');
     await ensureIndexes(Room, 'Room');
     console.log('   ✅ All indexes for Team, Player, User, and Room successfully verified.');

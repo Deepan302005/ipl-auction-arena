@@ -154,6 +154,23 @@ const roomSchema = new mongoose.Schema(
         default: 2026
       },
       selectedSeasons: [{ type: Number }],
+      auctionPoolFilter: {
+        type: String,
+        enum: [
+          'all',
+          'played-matches-only',
+          'nominees-only',
+          'young-uncapped',
+          'shortlisted-only',
+          'sold-only',
+          'unsold-only'
+        ],
+        default: 'all'
+      },
+      selectedAuctionYears: [{ type: Number }],
+      filterYoungOnly: { type: Boolean, default: false },
+      filterUncappedOnly: { type: Boolean, default: false },
+      filterNonDebutantsOnly: { type: Boolean, default: false },
       customIncludedPlayers: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Player'

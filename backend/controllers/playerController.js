@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Player = require('../models/Player');
+const AuctionRecord = require('../models/AuctionRecord');
 
 /**
  * @desc    Get players with pagination, filtering & search
@@ -527,10 +528,141 @@ const importPlayersCsv = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Get historical auction nominee records with filtering & search
+ * @route   GET /api/players/auction-records
+ * @access  Public
+ */
+const getAuctionRecords = async (req, res, next) => {
+  try {
+    const {
+      year,
+      auctionYear,
+      result,
+      auctionResult,
+      isUncapped,
+      isYoung,
+      nonDebutantsOnly,
+      search,
+      page = 1,
+      limit = 50
+    } = req.query;
+
+    const filter = {};
+    const y = year || auctionYear;
+    if (y && y !== 'all') {
+      filter.auctionYear = parseInt(y, 10);
+    }
+
+    const resFilter = result || auctionResult;
+    if (resFilter && resFilter !== 'all') {
+      filter.auctionResult = resFilter;
+    }
+
+    if (isUncapped !== undefined && isUncapped !== '') {
+      filter.isUncapped = isUncapped === 'true';
+    }
+
+    if (isYoung !== undefined && isYoung !== '') {
+      filter.isYoungPlayer = isYoung === 'true';
+    }
+
+    if (nonDebutantsOnly === 'true') {
+      filter.hasPlayedIPL = false;
+    }
+
+    if (search && search.trim()) {
+      filter.playerName = { $regex: search.trim(), $options: 'i' };
+    }
+
+    const p = Math.max(1, parseInt(page, 10) || 1);
+    const l = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const skip = (p - 1) * l;
+
+    const [records, totalCount, yearCounts, resultCounts] = await Promise.all([
+      AuctionRecord.find(filter)
+        .sort({ auctionYear: -1, winningPriceCr: -1, basePriceCr: -1, playerName: 1 })
+        .skip(skip)
+        .limit(l)
+        .lean(),
+      AuctionRecord.countDocuments(filter),
+      AuctionRecord.aggregate([
+        { $group: { _id: '$auctionYear', count: { $sum: 1 } } },
+        { $sort: { _id: 1 } }
+      ]),
+      AuctionRecord.aggregate([
+        { $group: { _id: '$auctionResult', count: { $sum: 1 } } }
+      ])
+    ]);
+
+    const totalPages = Math.ceil(totalCount / l) || 1;
+
+    return res.status(200).json({
+      success: true,
+      count: records.length,
+      pagination: {
+        page: p,
+        limit: l,
+        totalPages,
+        totalCount,
+        hasNextPage: p < totalPages,
+        hasPrevPage: p > 1
+      },
+      summary: {
+        byYear: yearCounts.reduce((acc, curr) => ({ ...acc, [curr._id]: curr.count }), {}),
+        byResult: resultCounts.reduce((acc, curr) => ({ ...acc, [curr._id]: curr.count }), {})
+      },
+      data: records
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get auction history for a specific player
+ * @route   GET /api/players/:id/auctions
+ * @access  Public
+ */
+const getPlayerAuctionHistory = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    let player;
+
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      player = await Player.findById(id).select('name role country isUncapped isYoungPlayer dateOfBirth auctionHistory').lean();
+    } else {
+      player = await Player.findOne({ name: id }).select('name role country isUncapped isYoungPlayer dateOfBirth auctionHistory').lean();
+    }
+
+    if (!player) {
+      return res.status(404).json({ success: false, message: 'Player not found' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      player: {
+        id: player._id,
+        name: player.name,
+        role: player.role,
+        country: player.country,
+        isUncapped: player.isUncapped,
+        isYoungPlayer: player.isYoungPlayer,
+        dateOfBirth: player.dateOfBirth
+      },
+      auctionHistory: player.auctionHistory || []
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getPlayers,
   getPlayerById,
   getPlayerCategories,
+  getAuctionRecords,
+  getPlayerAuctionHistory,
   createCustomPlayer,
   updatePlayer,
   deletePlayer,

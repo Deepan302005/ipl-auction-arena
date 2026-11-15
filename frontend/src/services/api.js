@@ -264,5 +264,19 @@ export const api = {
     return request(url, {
       headers: getHeaders()
     });
+  },
+
+  async getAuctionRecords(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    const url = `/api/players/auction-records${query ? `?${query}` : ''}`;
+    return request(url, {
+      headers: getHeaders()
+    });
+  },
+
+  async getPlayerAuctionHistory(playerIdOrName) {
+    return request(`/api/players/${encodeURIComponent(playerIdOrName)}/auctions`, {
+      headers: getHeaders()
+    });
   }
 };

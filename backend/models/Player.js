@@ -31,6 +31,36 @@ const seasonStatSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const auctionParticipationSchema = new mongoose.Schema(
+  {
+    auctionYear: { type: Number, required: true, index: true },
+    iplSeason: { type: Number, required: true },
+    registrationStatus: {
+      type: String,
+      enum: ['registered', 'shortlisted', 'accelerated', 'retained', 'drafted', 'replacement'],
+      default: 'shortlisted'
+    },
+    finalShortlistStatus: { type: Boolean, default: true, index: true },
+    auctionSet: { type: String, default: 'General' },
+    basePriceCr: { type: Number, default: 0.20 },
+    auctionResult: {
+      type: String,
+      enum: ['sold', 'unsold', 'withdrawn', 'retained', 'drafted', 'registered_only'],
+      default: 'sold',
+      index: true
+    },
+    winningFranchise: { type: String, default: null },
+    winningPriceCr: { type: Number, default: null },
+    sourceReference: { type: String, default: 'Official IPL/BCCI Auction Records' },
+    verificationStatus: {
+      type: String,
+      enum: ['verified', 'archived', 'official'],
+      default: 'verified'
+    }
+  },
+  { _id: false }
+);
+
 const playerSchema = new mongoose.Schema(
   {
     name: {
@@ -140,6 +170,31 @@ const playerSchema = new mongoose.Schema(
       type: String,
       default: 'Cricsheet (ODC-By v1.0, 2008-2026)'
     },
+    dateOfBirth: {
+      type: String,
+      default: null
+    },
+    isIndian: {
+      type: Boolean,
+      default: true,
+      index: true
+    },
+    isUncapped: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    isYoungPlayer: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    hasPlayedIPL: {
+      type: Boolean,
+      default: true,
+      index: true
+    },
+    auctionHistory: [auctionParticipationSchema],
     lastUpdated: {
       type: Date,
       default: Date.now
@@ -152,5 +207,7 @@ const playerSchema = new mongoose.Schema(
 
 // Compound text index for fast search
 playerSchema.index({ name: 'text', nationality: 'text', category: 'text' });
+playerSchema.index({ isUncapped: 1, isYoungPlayer: 1 });
+playerSchema.index({ hasPlayedIPL: 1, isAuctionEligible: 1 });
 
 module.exports = mongoose.model('Player', playerSchema);
