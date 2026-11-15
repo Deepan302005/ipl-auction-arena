@@ -140,7 +140,28 @@ const roomSchema = new mongoose.Schema(
         enum: ['all-time', 'season', 'multi-season', 'custom-only', 'curated'],
         default: 'all-time'
       },
+      seasonMode: {
+        type: String,
+        enum: ['all-time', '2008-2015', '2016-2020', '2021-2026', 'range', 'individual'],
+        default: 'all-time'
+      },
+      selectedStartSeason: {
+        type: Number,
+        default: 2008
+      },
+      selectedEndSeason: {
+        type: Number,
+        default: 2026
+      },
       selectedSeasons: [{ type: Number }],
+      customIncludedPlayers: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Player'
+      }],
+      customExcludedPlayers: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Player'
+      }],
       selectedCategories: {
         type: [String],
         default: ['Batsman', 'Bowler', 'All-Rounder', 'Wicket-Keeper']

@@ -53,33 +53,34 @@ const syncAtlasDatabase = async () => {
       console.log(`   ✅ 10 Official IPL Franchises verified and synchronized (Total: ${finalTeams}).`);
     }
 
-    // 2. Sync 805 Historical Players
-    const playersFile = path.join(__dirname, '../data/historical_players_805.json');
+    // 2. Sync Expanded Historical Players (2008-2026)
+    const playersFile = fs.existsSync(path.join(__dirname, '../data/historical_players_expanded.json'))
+      ? path.join(__dirname, '../data/historical_players_expanded.json')
+      : path.join(__dirname, '../data/historical_players_805.json');
+
     if (fs.existsSync(playersFile)) {
       const rawPlayers = JSON.parse(fs.readFileSync(playersFile, 'utf8'));
       const existingPlayerCount = await Player.countDocuments();
-      console.log(`\n2. Historical Players Synchronization (Existing in DB: ${existingPlayerCount}/805):`);
+      console.log(`\n2. Historical Players Synchronization (Existing in DB: ${existingPlayerCount}/${rawPlayers.length}):`);
 
-      if (existingPlayerCount < 805) {
-        console.log(`   Importing historical player records in batches...`);
-        const batchSize = 100;
-        for (let i = 0; i < rawPlayers.length; i += batchSize) {
-          const batch = rawPlayers.slice(i, i + batchSize);
-          const ops = batch.map((p) => {
-            const { _id, ...playerData } = p;
-            return {
-              updateOne: {
-                filter: { slug: p.slug },
-                update: { $set: playerData },
-                upsert: true
-              }
-            };
-          });
-          await Player.bulkWrite(ops);
-        }
+      console.log(`   Importing and synchronizing expanded player records in batches...`);
+      const batchSize = 100;
+      for (let i = 0; i < rawPlayers.length; i += batchSize) {
+        const batch = rawPlayers.slice(i, i + batchSize);
+        const ops = batch.map((p) => {
+          const { _id, ...playerData } = p;
+          return {
+            updateOne: {
+              filter: { name: p.name },
+              update: { $set: playerData },
+              upsert: true
+            }
+          };
+        });
+        await Player.bulkWrite(ops);
       }
       const finalPlayers = await Player.countDocuments();
-      console.log(`   ✅ 805 Historical Player Records verified and synchronized (Total: ${finalPlayers}).`);
+      console.log(`   ✅ Expanded Historical Player Records synchronized (Total in DB: ${finalPlayers}).`);
     }
 
     // 3. Ensure Database Indexes

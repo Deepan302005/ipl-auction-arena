@@ -227,6 +227,30 @@ export const api = {
     });
   },
 
+  async previewPlayerPool(settings = {}) {
+    return request('/api/rooms/preview-pool', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ settings })
+    });
+  },
+
+  async getRoomEligiblePlayers(roomCode, params = {}) {
+    const query = new URLSearchParams(params).toString();
+    const url = `/api/rooms/${roomCode.toUpperCase()}/eligible-players${query ? `?${query}` : ''}`;
+    return request(url, {
+      headers: getHeaders()
+    });
+  },
+
+  async updateRoomPlayerPool(roomCode, payload) {
+    return request(`/api/rooms/${roomCode.toUpperCase()}/player-pool`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+  },
+
   // Teams & Players Master Data
   async getTeams() {
     return request('/api/teams', {

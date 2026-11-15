@@ -7,6 +7,7 @@ import { IPL_TEAMS } from '../../data/teamsData';
 import { TeamLogo } from '../common/TeamLogo';
 import { MOCK_ROOMS } from '../../data/mockRooms.js';
 import { RoomSettingsModal } from './RoomSettingsModal';
+import { PlayerPoolModal } from './PlayerPoolModal';
 import {
   Copy,
   Check,
@@ -27,7 +28,8 @@ import {
   AlertCircle,
   User,
   ArrowRight,
-  Home
+  Home,
+  Calendar
 } from 'lucide-react';
 
 export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
@@ -54,7 +56,23 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
 
   // Host modal state
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [playerPoolOpen, setPlayerPoolOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+
+  const getSeasonDescription = () => {
+    const s = room?.settings || {};
+    const mode = s.seasonMode || s.poolType || 'all-time';
+    if (mode === 'all-time') return 'All-Time IPL (2008–2026)';
+    if (mode === '2008-2015') return '2008–2015 (Classic Era)';
+    if (mode === '2016-2020') return '2016–2020 (Golden Era)';
+    if (mode === '2021-2026') return '2021–2026 (Modern Era)';
+    if (mode === 'range') return `Range: ${s.selectedStartSeason || 2008}–${s.selectedEndSeason || 2026}`;
+    if (mode === 'individual') {
+      const list = s.selectedSeasons || [];
+      return list.length > 0 ? `Seasons: ${list.join(', ')}` : 'Individual Seasons';
+    }
+    return 'All-Time IPL (2008–2026)';
+  };
 
   const currentUserId = user?._id ? String(user._id) : null;
   const hostId = room?.host?._id ? String(room.host._id) : (room?.host ? String(room.host) : null);
@@ -155,8 +173,17 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
       onAuctionStarted(roomCode);
     };
 
+    const handleQueueUpdated = (data) => {
+      setRoom((prev) => prev ? {
+        ...prev,
+        auctionQueueCount: data.queueCount || data.eligiblePlayerCount || prev.auctionQueueCount
+      } : prev);
+    };
+
     socket.on('room:stateSync', handleRoomStateSync);
+    socket.on('room:stateUpdated', handleRoomStateSync);
     socket.on('auction:stateUpdated', handleRoomStateSync);
+    socket.on('auction:queueUpdated', handleQueueUpdated);
     socket.on('room:franchiseClaimed', handleFranchiseClaimed);
     socket.on('room:franchiseReleased', handleFranchiseReleased);
     socket.on('auction:started', handleAuctionStarted);
@@ -164,7 +191,9 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
     return () => {
       socket.emit('room:leave', { roomCode });
       socket.off('room:stateSync', handleRoomStateSync);
+      socket.off('room:stateUpdated', handleRoomStateSync);
       socket.off('auction:stateUpdated', handleRoomStateSync);
+      socket.off('auction:queueUpdated', handleQueueUpdated);
       socket.off('room:franchiseClaimed', handleFranchiseClaimed);
       socket.off('room:franchiseReleased', handleFranchiseReleased);
       socket.off('auction:started', handleAuctionStarted);
@@ -482,6 +511,15 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 w-full md:w-auto">
+            <button
+              onClick={() => setPlayerPoolOpen(true)}
+              className="px-3.5 py-2.5 rounded-xl bg-navy-800 hover:bg-navy-700 text-slate-300 hover:text-white border border-navy-700 flex items-center gap-1.5 text-xs font-bold transition-all shadow-sm"
+              title="Auction Player Pool & Seasons"
+            >
+              <Users className="w-4 h-4 text-blue-400" />
+              <span>Pool ({room.auctionQueueCount || (Array.isArray(room.auctionQueue) ? room.auctionQueue.length : 0)})</span>
+            </button>
+
             {isHost && (
               <button
                 onClick={() => setSettingsOpen(true)}
@@ -560,6 +598,34 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
               <span>Share</span>
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Season Selection & Player Pool Card */}
+      <div className="bg-gradient-to-r from-blue-950/60 via-navy-900 to-indigo-950/60 border border-blue-500/25 rounded-2xl p-4 sm:p-5 shadow-lg">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Calendar className="w-4 h-4 text-amber-400" />
+              <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-white">
+                Player Pool & Seasons
+              </span>
+              <span className="text-xs font-mono font-bold text-amber-300 bg-amber-400/15 border border-amber-400/30 px-2.5 py-0.5 rounded">
+                {getSeasonDescription()}
+              </span>
+            </div>
+            <p className="text-xs text-slate-300">
+              Total eligible pool: <strong className="text-amber-400">{room.auctionQueueCount || (Array.isArray(room.auctionQueue) ? room.auctionQueue.length : 0)} cricketers</strong> ready for live bidding.
+            </p>
+          </div>
+
+          <button
+            onClick={() => setPlayerPoolOpen(true)}
+            className="px-4 py-2 bg-navy-800 hover:bg-navy-700 text-slate-200 hover:text-white border border-navy-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+          >
+            <Users className="w-3.5 h-3.5 text-blue-400" />
+            <span>{isHost ? 'Customize Player Pool' : 'View Eligible Players'}</span>
+          </button>
         </div>
       </div>
 
@@ -752,6 +818,15 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
           onSettingsUpdated={(updatedRoom) => setRoom(updatedRoom)}
         />
       )}
+
+      {/* Player Pool & Seasons Customization Modal */}
+      <PlayerPoolModal
+        isOpen={playerPoolOpen}
+        onClose={() => setPlayerPoolOpen(false)}
+        room={room}
+        isHost={isHost}
+        onPoolUpdated={(updatedRoom) => setRoom(updatedRoom)}
+      />
     </div>
   );
 };

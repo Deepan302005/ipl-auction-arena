@@ -3,9 +3,10 @@ import { Modal } from '../common/Modal';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { PlusCircle, Lock, Unlock, Clock, Zap, DollarSign, Layers, Shield, Sparkles, User } from 'lucide-react';
+import { PlusCircle, Lock, Unlock, Clock, Zap, DollarSign, Layers, Shield, Sparkles, User, Calendar } from 'lucide-react';
 import { IPL_TEAMS } from '../../data/teamsData';
 import { TeamLogo } from '../common/TeamLogo';
+import { SeasonSelectionControl } from './SeasonSelectionControl';
 
 export const CreateRoomModal = ({ isOpen, onClose, onRoomCreated }) => {
   const { user, ensureSession } = useAuth();
@@ -18,7 +19,12 @@ export const CreateRoomModal = ({ isOpen, onClose, onRoomCreated }) => {
   const [bidExtensionSeconds, setBidExtensionSeconds] = useState(5);
   const [incrementLadderType, setIncrementLadderType] = useState('official');
   const [startingPurseCr, setStartingPurseCr] = useState(120);
-  const [poolType, setPoolType] = useState('all-time');
+  const [seasonSettings, setSeasonSettings] = useState({
+    seasonMode: 'all-time',
+    selectedStartSeason: 2008,
+    selectedEndSeason: 2026,
+    selectedSeasons: []
+  });
   const [loading, setLoading] = useState(false);
 
   const { toastSuccess, toastError } = useToast();
@@ -64,7 +70,10 @@ export const CreateRoomModal = ({ isOpen, onClose, onRoomCreated }) => {
           bidExtensionSeconds: Number(bidExtensionSeconds),
           incrementLadderType,
           startingPurseCr: Number(startingPurseCr),
-          poolType
+          seasonMode: seasonSettings.seasonMode,
+          selectedStartSeason: seasonSettings.selectedStartSeason,
+          selectedEndSeason: seasonSettings.selectedEndSeason,
+          selectedSeasons: seasonSettings.selectedSeasons
         }
       });
 
@@ -215,6 +224,17 @@ export const CreateRoomModal = ({ isOpen, onClose, onRoomCreated }) => {
               );
             })}
           </div>
+        </div>
+
+        {/* Host-Controlled Season Selection */}
+        <div className="bg-navy-950/60 border border-navy-800 rounded-xl p-3.5 sm:p-4">
+          <SeasonSelectionControl
+            seasonMode={seasonSettings.seasonMode}
+            selectedStartSeason={seasonSettings.selectedStartSeason}
+            selectedEndSeason={seasonSettings.selectedEndSeason}
+            selectedSeasons={seasonSettings.selectedSeasons}
+            onChange={setSeasonSettings}
+          />
         </div>
 
         {/* Rules & Sliders Grid */}

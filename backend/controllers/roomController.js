@@ -8,6 +8,15 @@ const ALLOWED_TIMERS = [5, 10, 15, 20, 30, 45, 60];
 const ALLOWED_BID_EXTENSIONS = [0, 3, 5, 10];
 const ALLOWED_AUCTION_MODES = ['standard', 'fast', 'marquee-first'];
 const ALLOWED_POOL_TYPES = ['all-time', 'season', 'multi-season', 'custom-only', 'curated'];
+const ALLOWED_SEASON_MODES = ['all-time', '2008-2015', '2016-2020', '2021-2026', 'range', 'individual'];
+
+const KNOWN_FRANCHISES = [
+  'Chennai Super Kings', 'Sunrisers Hyderabad', 'Rajasthan Royals', 'Mumbai Indians',
+  'Kolkata Knight Riders', 'Punjab Kings', 'Delhi Capitals', 'Gujarat Titans',
+  'Lucknow Super Giants', 'Royal Challengers Bangalore', 'Kings XI Punjab',
+  'Royal Challengers Bengaluru', 'Deccan Chargers', 'Delhi Daredevils', 'Pune Warriors',
+  'Gujarat Lions', 'Rising Pune Supergiant', 'Rising Pune Supergiants', 'Kochi Tuskers Kerala'
+];
 
 /**
  * Helper to sanitize room state for API responses and Socket emissions.
@@ -65,31 +74,63 @@ const generateRoomCode = async () => {
 };
 
 /**
- * Build room-specific auction player queue
+ * Computes official IPL calendar seasons list matching the chosen season mode & inputs
+ */
+const computeEffectiveSeasons = (settings = {}) => {
+  const mode = settings.seasonMode || settings.poolType || 'all-time';
+
+  if (mode === 'all-time') {
+    return null; // All seasons (2008-2026)
+  }
+
+  if (mode === '2008-2015') {
+    return [2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015];
+  }
+
+  if (mode === '2016-2020') {
+    return [2016, 2017, 2018, 2019, 2020];
+  }
+
+  if (mode === '2021-2026') {
+    return [2021, 2022, 2023, 2024, 2025, 2026];
+  }
+
+  if (mode === 'range') {
+    const start = Math.max(2008, Math.min(2026, parseInt(settings.selectedStartSeason, 10) || 2008));
+    const end = Math.max(start, Math.min(2026, parseInt(settings.selectedEndSeason, 10) || 2026));
+    const arr = [];
+    for (let s = start; s <= end; s++) arr.push(s);
+    return arr;
+  }
+
+  if (mode === 'individual' || mode === 'season' || mode === 'multi-season') {
+    if (Array.isArray(settings.selectedSeasons) && settings.selectedSeasons.length > 0) {
+      return settings.selectedSeasons.map(s => parseInt(s, 10)).filter(s => s >= 2008 && s <= 2026);
+    }
+    return null;
+  }
+
+  return null;
+};
+
+/**
+ * Build room-specific auction player queue with season filtering & deduplication
  */
 const buildAuctionQueue = async (settings = {}) => {
   const {
     poolType = 'all-time',
-    selectedSeasons = [],
     includeRetired = true,
     includeCustom = true,
-    maxQueueSize = 100,
-    selectedCategories = []
+    maxQueueSize = 150,
+    selectedCategories = [],
+    customIncludedPlayers = [],
+    customExcludedPlayers = []
   } = settings;
 
   const filter = {
-    isAuctionEligible: true
+    isAuctionEligible: true,
+    name: { $nin: KNOWN_FRANCHISES }
   };
-
-  // Exclude known corrupted franchise names
-  const KNOWN_FRANCHISES = [
-    'Chennai Super Kings', 'Sunrisers Hyderabad', 'Rajasthan Royals', 'Mumbai Indians',
-    'Kolkata Knight Riders', 'Punjab Kings', 'Delhi Capitals', 'Gujarat Titans',
-    'Lucknow Super Giants', 'Royal Challengers Bangalore', 'Kings XI Punjab',
-    'Royal Challengers Bengaluru', 'Deccan Chargers', 'Delhi Daredevils', 'Pune Warriors',
-    'Gujarat Lions', 'Rising Pune Supergiant', 'Rising Pune Supergiants', 'Kochi Tuskers Kerala'
-  ];
-  filter.name = { $nin: KNOWN_FRANCHISES };
 
   // Custom player filtering
   if (!includeCustom) {
@@ -103,16 +144,26 @@ const buildAuctionQueue = async (settings = {}) => {
     filter.isRetired = false;
   }
 
-  // Season-specific filtering
-  if ((poolType === 'season' || poolType === 'multi-season') && Array.isArray(selectedSeasons) && selectedSeasons.length > 0) {
-    filter.seasonsPlayed = { $in: selectedSeasons.map((s) => parseInt(s, 10)) };
+  // Effective Season filtering
+  const effectiveSeasons = computeEffectiveSeasons(settings);
+  if (Array.isArray(effectiveSeasons) && effectiveSeasons.length > 0) {
+    filter.seasonsPlayed = { $in: effectiveSeasons };
+  }
+
+  // Excluded player IDs filtering
+  const excludedIds = Array.isArray(customExcludedPlayers)
+    ? customExcludedPlayers.map(id => id?.toString ? id.toString() : String(id))
+    : [];
+
+  if (excludedIds.length > 0) {
+    filter._id = { $nin: excludedIds };
   }
 
   // Category/Role-specific filtering (if provided)
   if (Array.isArray(selectedCategories) && selectedCategories.length > 0) {
     const normalized = selectedCategories.flatMap((c) => {
       if (c === 'Wicket-Keeper' || c === 'Wicketkeeper') return ['Wicketkeeper', 'Wicket-Keeper', 'Wicketkeepers'];
-      if (c === 'Batsman' || c === 'Batsmen') return ['Batsman', 'Batsmen'];
+      if (c === 'Batsman' || c === 'Batsmen' || c === 'Batter') return ['Batsman', 'Batsmen', 'Batter'];
       if (c === 'Bowler' || c === 'Bowlers') return ['Bowler', 'Bowlers', 'Fast Bowlers', 'Spinners'];
       if (c === 'All-Rounder' || c === 'All-Rounders') return ['All-Rounder', 'All-Rounders'];
       return [c];
@@ -123,7 +174,7 @@ const buildAuctionQueue = async (settings = {}) => {
     ];
   }
 
-  const limit = Math.min(300, Math.max(10, parseInt(maxQueueSize, 10) || 100));
+  const limit = Math.min(500, Math.max(10, parseInt(maxQueueSize, 10) || 150));
 
   const players = await Player.find(filter)
     .sort({ basePriceCr: -1, 'iplStats.runs': -1, 'iplStats.wickets': -1, name: 1 })
@@ -138,6 +189,28 @@ const buildAuctionQueue = async (settings = {}) => {
     if (!seen.has(idStr)) {
       seen.add(idStr);
       queue.push(p._id);
+    }
+  }
+
+  // Append custom included players if not already in queue
+  if (Array.isArray(customIncludedPlayers) && customIncludedPlayers.length > 0) {
+    const includedIds = customIncludedPlayers
+      .map(id => id?.toString ? id.toString() : String(id))
+      .filter(id => !excludedIds.includes(id) && !seen.has(id));
+
+    if (includedIds.length > 0) {
+      const extraPlayers = await Player.find({
+        _id: { $in: includedIds },
+        name: { $nin: KNOWN_FRANCHISES }
+      }).lean();
+
+      for (const ep of extraPlayers) {
+        const idStr = ep._id.toString();
+        if (!seen.has(idStr)) {
+          seen.add(idStr);
+          queue.push(ep._id);
+        }
+      }
     }
   }
 
@@ -250,6 +323,13 @@ const createRoom = async (req, res, next) => {
       });
     }
 
+    const seasonMode = settings?.seasonMode || (ALLOWED_SEASON_MODES.includes(settings?.poolType) ? settings.poolType : 'all-time');
+    const selectedStartSeason = settings?.selectedStartSeason ? Math.max(2008, Math.min(2026, Number(settings.selectedStartSeason))) : 2008;
+    const selectedEndSeason = settings?.selectedEndSeason ? Math.max(2008, Math.min(2026, Number(settings.selectedEndSeason))) : 2026;
+    const selectedSeasons = Array.isArray(settings?.selectedSeasons) ? settings.selectedSeasons.map(Number) : [];
+    const customIncludedPlayers = Array.isArray(settings?.customIncludedPlayers) ? settings.customIncludedPlayers : [];
+    const customExcludedPlayers = Array.isArray(settings?.customExcludedPlayers) ? settings.customExcludedPlayers : [];
+
     const configuredSettings = {
       timerSeconds,
       bidExtensionSeconds,
@@ -259,11 +339,16 @@ const createRoom = async (req, res, next) => {
       maxSquadSize,
       maxOverseas,
       poolType,
-      selectedSeasons: settings?.selectedSeasons || [],
+      seasonMode,
+      selectedStartSeason,
+      selectedEndSeason,
+      selectedSeasons,
+      customIncludedPlayers,
+      customExcludedPlayers,
       selectedCategories: settings?.selectedCategories || ['Batsman', 'Bowler', 'All-Rounder', 'Wicket-Keeper'],
       includeRetired: settings?.includeRetired !== undefined ? !!settings.includeRetired : true,
       includeCustom: settings?.includeCustom !== undefined ? !!settings.includeCustom : true,
-      maxQueueSize: settings?.maxQueueSize || 100,
+      maxQueueSize: settings?.maxQueueSize || 150,
       allowMultipleFranchisesPerUser: !!settings?.allowMultipleFranchisesPerUser,
       incrementLadderType
     };
@@ -1248,6 +1333,34 @@ const updateRoomSettings = async (req, res, next) => {
         room.settings.maxOverseas = val;
       }
 
+      if (settings.seasonMode !== undefined) {
+        if (!ALLOWED_SEASON_MODES.includes(settings.seasonMode)) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid seasonMode. Allowed: ${ALLOWED_SEASON_MODES.join(', ')}`
+          });
+        }
+        room.settings.seasonMode = settings.seasonMode;
+      }
+
+      if (settings.selectedStartSeason !== undefined) {
+        room.settings.selectedStartSeason = Math.max(2008, Math.min(2026, Number(settings.selectedStartSeason)));
+      }
+      if (settings.selectedEndSeason !== undefined) {
+        room.settings.selectedEndSeason = Math.max(2008, Math.min(2026, Number(settings.selectedEndSeason)));
+      }
+      if (settings.selectedSeasons !== undefined) {
+        room.settings.selectedSeasons = Array.isArray(settings.selectedSeasons)
+          ? settings.selectedSeasons.map(Number)
+          : [];
+      }
+      if (settings.customIncludedPlayers !== undefined) {
+        room.settings.customIncludedPlayers = Array.isArray(settings.customIncludedPlayers) ? settings.customIncludedPlayers : [];
+      }
+      if (settings.customExcludedPlayers !== undefined) {
+        room.settings.customExcludedPlayers = Array.isArray(settings.customExcludedPlayers) ? settings.customExcludedPlayers : [];
+      }
+
       if (settings.poolType !== undefined) {
         if (!ALLOWED_POOL_TYPES.includes(settings.poolType)) {
           return res.status(400).json({
@@ -1258,16 +1371,15 @@ const updateRoomSettings = async (req, res, next) => {
         room.settings.poolType = settings.poolType;
       }
 
-      if (settings.selectedSeasons !== undefined) room.settings.selectedSeasons = settings.selectedSeasons;
       if (settings.selectedCategories !== undefined) room.settings.selectedCategories = settings.selectedCategories;
       if (settings.includeRetired !== undefined) room.settings.includeRetired = !!settings.includeRetired;
       if (settings.includeCustom !== undefined) room.settings.includeCustom = !!settings.includeCustom;
       if (settings.maxQueueSize !== undefined) {
         const val = Number(settings.maxQueueSize);
-        if (val < 10 || val > 300) {
+        if (val < 10 || val > 500) {
           return res.status(400).json({
             success: false,
-            message: 'Queue size must be between 10 and 300'
+            message: 'Queue size must be between 10 and 500'
           });
         }
         room.settings.maxQueueSize = val;
@@ -1286,7 +1398,7 @@ const updateRoomSettings = async (req, res, next) => {
       }
     }
 
-    if (rebuildQueue) {
+    if (rebuildQueue || settings?.seasonMode !== undefined || settings?.selectedStartSeason !== undefined || settings?.selectedEndSeason !== undefined || settings?.selectedSeasons !== undefined) {
       room.auctionQueue = await buildAuctionQueue(room.settings);
     }
 
@@ -1296,10 +1408,240 @@ const updateRoomSettings = async (req, res, next) => {
       .populate('currentAuction.player')
       .populate('participants', 'name email favoriteTeam avatar');
 
+    const sanitized = getSanitizedRoomState(populated);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(roomCode).emit('room:stateUpdated', { room: sanitized });
+      io.to(roomCode).emit('auction:queueUpdated', {
+        roomCode,
+        queueCount: room.auctionQueue.length,
+        eligiblePlayerCount: room.auctionQueue.length
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Room settings updated successfully',
-      data: getSanitizedRoomState(populated)
+      data: sanitized
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Preview player pool count and player distribution for season settings before creating room
+ * @route   POST /api/rooms/preview-pool
+ * @access  Public
+ */
+const previewPlayerPool = async (req, res, next) => {
+  try {
+    const settings = req.body?.settings || req.body || {};
+    const effectiveSeasons = computeEffectiveSeasons(settings);
+
+    const filter = {
+      isAuctionEligible: true,
+      name: { $nin: KNOWN_FRANCHISES }
+    };
+
+    if (Array.isArray(effectiveSeasons) && effectiveSeasons.length > 0) {
+      filter.seasonsPlayed = { $in: effectiveSeasons };
+    }
+
+    if (settings.includeRetired === false) {
+      filter.isRetired = false;
+    }
+
+    if (settings.includeCustom === false) {
+      filter.isCustom = { $ne: true };
+    }
+
+    const [totalCount, players, roleCounts, overseasCount] = await Promise.all([
+      Player.countDocuments(filter),
+      Player.find(filter)
+        .select('name role country nationality basePriceCr seasonsPlayed isCapped image iplStats')
+        .sort({ basePriceCr: -1, 'iplStats.runs': -1, 'iplStats.wickets': -1, name: 1 })
+        .limit(100)
+        .lean(),
+      Player.aggregate([
+        { $match: filter },
+        { $group: { _id: '$role', count: { $sum: 1 } } }
+      ]),
+      Player.countDocuments({ ...filter, country: 'Overseas' })
+    ]);
+
+    const breakdown = {
+      total: totalCount,
+      overseas: overseasCount,
+      indian: Math.max(0, totalCount - overseasCount),
+      roles: {}
+    };
+
+    roleCounts.forEach(r => {
+      breakdown.roles[r._id || 'All-Rounder'] = r.count;
+    });
+
+    return res.status(200).json({
+      success: true,
+      seasonMode: settings.seasonMode || 'all-time',
+      effectiveSeasons,
+      breakdown,
+      players
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get room eligible players with search, filter, and queue inclusion flags
+ * @route   GET /api/rooms/:roomCode/eligible-players
+ * @access  Protected
+ */
+const getRoomEligiblePlayers = async (req, res, next) => {
+  try {
+    const roomCode = req.params.roomCode.toUpperCase();
+    const room = await Room.findOne({ roomCode }).lean();
+
+    if (!room) {
+      return res.status(404).json({ success: false, message: `Room '${roomCode}' not found` });
+    }
+
+    const { role, country, search } = req.query;
+    const settings = room.settings || {};
+    const effectiveSeasons = computeEffectiveSeasons(settings);
+
+    const filter = {
+      isAuctionEligible: true,
+      name: { $nin: KNOWN_FRANCHISES }
+    };
+
+    if (Array.isArray(effectiveSeasons) && effectiveSeasons.length > 0) {
+      filter.seasonsPlayed = { $in: effectiveSeasons };
+    }
+
+    if (role && role !== 'all') {
+      if (role === 'Wicketkeeper') filter.role = { $in: ['Wicketkeeper', 'Wicket-Keeper'] };
+      else if (role === 'Batter') filter.role = { $in: ['Batter', 'Batsman'] };
+      else filter.role = role;
+    }
+
+    if (country && country !== 'all') {
+      filter.country = country;
+    }
+
+    if (search && search.trim()) {
+      filter.name = { $regex: search.trim(), $options: 'i' };
+    }
+
+    const queueIdSet = new Set((room.auctionQueue || []).map(id => id.toString()));
+    const excludedSet = new Set((settings.customExcludedPlayers || []).map(id => id.toString()));
+    const includedSet = new Set((settings.customIncludedPlayers || []).map(id => id.toString()));
+
+    const players = await Player.find(filter)
+      .select('name role country nationality basePriceCr seasonsPlayed isCapped image iplStats')
+      .sort({ basePriceCr: -1, 'iplStats.runs': -1, name: 1 })
+      .limit(300)
+      .lean();
+
+    const mapped = players.map(p => {
+      const idStr = p._id.toString();
+      const isExcluded = excludedSet.has(idStr);
+      return {
+        ...p,
+        isInQueue: queueIdSet.has(idStr),
+        isCustomExcluded: isExcluded,
+        isCustomIncluded: includedSet.has(idStr),
+        isEligible: !isExcluded
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      roomCode,
+      seasonMode: settings.seasonMode || 'all-time',
+      effectiveSeasons,
+      totalEligible: queueIdSet.size,
+      count: mapped.length,
+      data: mapped
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Host customized player pool include/exclude and reset defaults
+ * @route   PUT /api/rooms/:roomCode/player-pool
+ * @access  Private (Host Only)
+ */
+const updateRoomPlayerPool = async (req, res, next) => {
+  try {
+    const roomCode = req.params.roomCode.toUpperCase();
+    const room = await Room.findOne({ roomCode });
+
+    if (!room) {
+      return res.status(404).json({ success: false, message: `Room '${roomCode}' not found` });
+    }
+
+    if (!room.host.equals(req.user._id)) {
+      return res.status(403).json({ success: false, message: 'Only the room host can customize the auction player pool' });
+    }
+
+    if (room.status !== 'waiting') {
+      return res.status(400).json({ success: false, message: 'Player pool can only be customized before the auction starts' });
+    }
+
+    const { action, playerId, resetDefaults } = req.body;
+
+    if (resetDefaults) {
+      room.settings.customIncludedPlayers = [];
+      room.settings.customExcludedPlayers = [];
+      room.auctionQueue = await buildAuctionQueue(room.settings);
+    } else if (action === 'include' && playerId) {
+      room.settings.customExcludedPlayers = (room.settings.customExcludedPlayers || []).filter(
+        id => id.toString() !== playerId.toString()
+      );
+      if (!(room.settings.customIncludedPlayers || []).some(id => id.toString() === playerId.toString())) {
+        room.settings.customIncludedPlayers.push(playerId);
+      }
+      room.auctionQueue = await buildAuctionQueue(room.settings);
+    } else if (action === 'exclude' && playerId) {
+      room.settings.customIncludedPlayers = (room.settings.customIncludedPlayers || []).filter(
+        id => id.toString() !== playerId.toString()
+      );
+      if (!(room.settings.customExcludedPlayers || []).some(id => id.toString() === playerId.toString())) {
+        room.settings.customExcludedPlayers.push(playerId);
+      }
+      room.auctionQueue = await buildAuctionQueue(room.settings);
+    } else if (action === 'selectAll') {
+      room.settings.customExcludedPlayers = [];
+      room.auctionQueue = await buildAuctionQueue(room.settings);
+    }
+
+    await room.save();
+
+    const populated = await Room.findById(room._id)
+      .populate('currentAuction.player')
+      .populate('participants', 'name email favoriteTeam avatar');
+
+    const sanitized = getSanitizedRoomState(populated);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(roomCode).emit('room:stateUpdated', { room: sanitized });
+      io.to(roomCode).emit('auction:queueUpdated', {
+        roomCode,
+        queueCount: room.auctionQueue.length,
+        eligiblePlayerCount: room.auctionQueue.length
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Player pool updated successfully',
+      data: sanitized
     });
   } catch (error) {
     next(error);
@@ -1321,10 +1663,15 @@ module.exports = {
   correctSale,
   endAuction,
   updateRoomSettings,
+  previewPlayerPool,
+  getRoomEligiblePlayers,
+  updateRoomPlayerPool,
   getSanitizedRoomState,
   buildAuctionQueue,
+  computeEffectiveSeasons,
   ALLOWED_TIMERS,
   ALLOWED_BID_EXTENSIONS,
   ALLOWED_AUCTION_MODES,
-  ALLOWED_POOL_TYPES
+  ALLOWED_POOL_TYPES,
+  ALLOWED_SEASON_MODES
 };

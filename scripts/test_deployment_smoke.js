@@ -115,13 +115,13 @@ const runSmokeTest = async () => {
       `Total Franchises: ${teamCount}/10`
     );
 
-    // 6. 805 Historical Player Records
+    // 6. Expanded Historical Player Records (2008-2026)
     const players = await request('/api/players?limit=10');
     const playerCount = players.data?.pagination?.totalCount || players.data?.pagination?.total || 0;
     assert(
-      players.statusCode === 200 && playerCount === 805,
-      '805 Historical Player Records Database Integrity',
-      `Total Players: ${playerCount}/805 (2008–2026)`
+      players.statusCode === 200 && playerCount >= 805,
+      'Expanded Historical Player Records Database Integrity',
+      `Total Players: ${playerCount} (>=805 verified players, 2008–2026)`
     );
 
     // 7. Guest Session Creation & Anti-Impersonation

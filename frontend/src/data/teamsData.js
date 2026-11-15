@@ -276,5 +276,5 @@ export const getFranchiseLogo = (codeOrId) => {
     return `/assets/teams/${clean}.png`;
   }
   const match = IPL_TEAMS.find((t) => t.code.toLowerCase() === clean || t.name.toLowerCase().includes(clean));
-  return match ? match.logoUrl : `/assets/teams/csk.png`;
+  return match ? match.logoUrl : null;
 };
