@@ -77,32 +77,52 @@ app.use(express.text({ type: ['text/csv', 'text/plain'], limit: '10mb' }));
 // Initialize Real-time Socket.IO
 initSocket(server, CLIENT_URL);
 
-// Mount API Routes
+// Mount Health Check Routes (Available at both /api/health and /health)
+const { getHealthStatus } = require('./controllers/healthController');
+app.get('/health', getHealthStatus);
+app.get('/api/health', getHealthStatus);
 app.use('/api', healthRoutes);
+
+// Mount API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/teams', teamRoutes);
 app.use('/api/players', playerRoutes);
 app.use('/api/seasons', seasonRoutes);
 app.use('/api/rooms', roomRoutes);
 
-// Serve static production frontend build if present
-const distPath = path.join(__dirname, '../frontend/dist');
-if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath));
+// Locate frontend dist directory across multiple deployment contexts
+const distPath = [
+  path.resolve(__dirname, '../frontend/dist'),
+  path.resolve(process.cwd(), 'frontend/dist'),
+  path.resolve(process.cwd(), 'dist')
+].find((p) => fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html')));
+
+if (distPath) {
+  console.log(`📦 [Frontend SPA]: Serving production build from ${distPath}`);
+  app.use(express.static(distPath, { index: 'index.html', maxAge: '1h' }));
+
+  // Explicit route for GET / to guarantee index.html is served immediately
+  app.get('/', (req, res) => {
+    return res.sendFile(path.join(distPath, 'index.html'));
+  });
+
+  // Client-side SPA routing fallback (exclude /api and /socket.io)
   app.get('*', (req, res, next) => {
-    if (req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/socket.io')) {
+    if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
       return next();
     }
     return res.sendFile(path.join(distPath, 'index.html'));
   });
 } else {
-  // Fallback root route if frontend dist is not built
+  console.warn('⚠️ [Frontend SPA]: frontend/dist not found. Serving API status fallback at /');
   app.get('/', (req, res) => {
     res.json({
       name: 'IPL Auction Arena API',
       status: 'online',
       version: '1.0.0',
-      documentation: '/api/health'
+      health: '/api/health',
+      documentation: '/api/rooms',
+      message: 'Frontend build not found at startup. APIs and WebSockets are online.'
     });
   });
 }
@@ -112,27 +132,36 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 // Connect to Database & Start Server
+const HOST = '0.0.0.0';
+
 const startServer = async () => {
-  // Connect to MongoDB Atlas (handled gracefully)
-  await connectDB();
-
-  // Recover active auction timers after restart
-  try {
-    const { getIO, recoverActiveAuctionTimers } = require('./socket');
-    const io = getIO();
-    await recoverActiveAuctionTimers(io);
-  } catch (err) {
-    // Socket or DB not ready yet
-  }
-
   return new Promise((resolve) => {
-    server.listen(PORT, () => {
+    server.listen(PORT, HOST, async () => {
       console.log(`\n🏏 ===============================================`);
       console.log(`🚀 IPL Auction Arena Backend Server running`);
-      console.log(`📡 URL: http://localhost:${PORT}`);
-      console.log(`🩺 Health API: http://localhost:${PORT}/api/health`);
+      console.log(`📡 URL: http://${HOST}:${PORT}`);
+      console.log(`🩺 Health API: http://${HOST}:${PORT}/api/health`);
       console.log(`⚡ WebSocket Server initialized on port ${PORT}`);
       console.log(`🏏 ===============================================\n`);
+
+      // Connect to MongoDB Atlas (asynchronous so port 10000 responds immediately)
+      try {
+        await connectDB();
+      } catch (dbErr) {
+        console.error('❌ Database connection error on startup:', dbErr.message);
+      }
+
+      // Recover active auction timers after restart
+      try {
+        const { getIO, recoverActiveAuctionTimers } = require('./socket');
+        const io = getIO();
+        if (io) {
+          await recoverActiveAuctionTimers(io);
+        }
+      } catch (err) {
+        // Socket or DB not ready yet
+      }
+
       resolve(server);
     });
   });
