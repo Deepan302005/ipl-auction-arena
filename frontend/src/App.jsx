@@ -12,17 +12,31 @@ import { RoomLobby } from './components/room/RoomLobby';
 import { LiveAuction } from './components/auction/LiveAuction';
 import { AuctionResults } from './components/results/AuctionResults';
 
-function getInitialRoute() {
+function parseRoute() {
   if (typeof window === 'undefined') return { view: 'home', roomCode: null };
+
+  // 1. Check path-based URLs (e.g. /rooms/IPL-5175, /room/IPL-5175, /auction/IPL-5175, /results/IPL-5175)
+  const pathname = window.location.pathname || '';
+  const pathMatch = pathname.match(/^\/(rooms?|auction|results)\/([A-Za-z0-9-]+)/i);
+  if (pathMatch) {
+    const rawView = pathMatch[1].toLowerCase();
+    const view = rawView.startsWith('room') ? 'room' : rawView;
+    return { view, roomCode: pathMatch[2].toUpperCase() };
+  }
+
+  // 2. Check hash-based URLs (e.g. #room/IPL-5175, #rooms/IPL-5175, #auction/IPL-5175)
   const hash = (window.location.hash || '').replace(/^#\/?/, '');
-  if (hash.startsWith('room/')) {
-    return { view: 'room', roomCode: hash.split('/')[1]?.toUpperCase() || null };
+  if (hash.startsWith('room/') || hash.startsWith('rooms/')) {
+    const code = hash.replace(/^rooms?\//, '').split(/[?#&/]/)[0];
+    if (code) return { view: 'room', roomCode: code.toUpperCase() };
   }
   if (hash.startsWith('auction/')) {
-    return { view: 'auction', roomCode: hash.split('/')[1]?.toUpperCase() || null };
+    const code = hash.replace(/^auction\//, '').split(/[?#&/]/)[0];
+    if (code) return { view: 'auction', roomCode: code.toUpperCase() };
   }
   if (hash.startsWith('results/')) {
-    return { view: 'results', roomCode: hash.split('/')[1]?.toUpperCase() || null };
+    const code = hash.replace(/^results\//, '').split(/[?#&/]/)[0];
+    if (code) return { view: 'results', roomCode: code.toUpperCase() };
   }
   if (hash === 'dashboard') {
     return { view: 'dashboard', roomCode: null };
@@ -31,55 +45,38 @@ function getInitialRoute() {
 }
 
 function AppContent() {
-  const initialRoute = getInitialRoute();
+  const initialRoute = parseRoute();
   const [currentView, setCurrentView] = useState(initialRoute.view);
   const [activeRoomCode, setActiveRoomCode] = useState(initialRoute.roomCode);
   const [createRoomModalOpen, setCreateRoomModalOpen] = useState(false);
 
-  // Parse Hash URL on mount and handle navigation
+  // Parse Path and Hash URL on mount and handle navigation
   useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.replace(/^#/, '');
-      if (hash.startsWith('room/')) {
-        const code = hash.split('/')[1]?.toUpperCase();
-        if (code) {
-          setActiveRoomCode(code);
-          setCurrentView('room');
-          return;
-        }
-      } else if (hash.startsWith('auction/')) {
-        const code = hash.split('/')[1]?.toUpperCase();
-        if (code) {
-          setActiveRoomCode(code);
-          setCurrentView('auction');
-          return;
-        }
-      } else if (hash.startsWith('results/')) {
-        const code = hash.split('/')[1]?.toUpperCase();
-        if (code) {
-          setActiveRoomCode(code);
-          setCurrentView('results');
-          return;
-        }
-      } else if (hash === 'dashboard') {
-        setCurrentView('dashboard');
-        return;
-      }
-      // Default to home if no valid route
-      setCurrentView('home');
+    const handleUrlChange = () => {
+      const route = parseRoute();
+      setCurrentView(route.view);
+      setActiveRoomCode(route.roomCode);
     };
 
-    handleHashChange();
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    handleUrlChange();
+    window.addEventListener('hashchange', handleUrlChange);
+    window.addEventListener('popstate', handleUrlChange);
+    return () => {
+      window.removeEventListener('hashchange', handleUrlChange);
+      window.removeEventListener('popstate', handleUrlChange);
+    };
   }, []);
 
   const navigateTo = (view, roomCode = null) => {
     setCurrentView(view);
     if (roomCode) {
       setActiveRoomCode(roomCode);
-      window.location.hash = `${view}/${roomCode}`;
+      const targetHash = `${view}/${roomCode}`;
+      if (window.location.hash !== `#${targetHash}`) {
+        window.location.hash = targetHash;
+      }
     } else {
+      setActiveRoomCode(null);
       window.location.hash = view === 'home' ? '' : view;
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });

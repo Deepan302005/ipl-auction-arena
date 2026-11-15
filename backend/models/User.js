@@ -36,8 +36,8 @@ const userSchema = new mongoose.Schema(
     },
     favoriteTeam: {
       type: String,
-      default: 'CSK',
-      enum: ['CSK', 'MI', 'RCB', 'KKR', 'DC', 'RR', 'SRH', 'GT', 'LSG', 'PBKS']
+      default: '',
+      enum: ['', 'CSK', 'MI', 'RCB', 'KKR', 'DC', 'RR', 'SRH', 'GT', 'LSG', 'PBKS']
     },
     avatar: {
       type: String,

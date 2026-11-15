@@ -10,6 +10,8 @@ import { RoomSettingsModal } from './RoomSettingsModal';
 import {
   Copy,
   Check,
+  Share2,
+  Link2,
   Shield,
   Users,
   Settings,
@@ -22,11 +24,14 @@ import {
   Unlock,
   Radio,
   Zap,
-  AlertCircle
+  AlertCircle,
+  User,
+  ArrowRight,
+  Home
 } from 'lucide-react';
 
 export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
-  const { user } = useAuth();
+  const { user, ensureSession } = useAuth();
   const { socket, isConnected } = useSocket();
   const { toastSuccess, toastError, toastInfo } = useToast();
 
@@ -34,16 +39,38 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
   const initialRoom = MOCK_ROOMS[codeUpper] || null;
   const [room, setRoom] = useState(initialRoom);
   const [loading, setLoading] = useState(!initialRoom);
-  const [copied, setCopied] = useState(false);
+  const [roomNotFound, setRoomNotFound] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+
+  // Sharing states
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  // Direct joining states
+  const [joinName, setJoinName] = useState(user?.name && user.name !== 'Manager' ? user.name : '');
+  const [joinPasscode, setJoinPasscode] = useState('');
+  const [joinLoading, setJoinLoading] = useState(false);
+  const [joinError, setJoinError] = useState('');
+
+  // Host modal state
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const hostId = room?.host?._id ? String(room.host._id) : (room?.host ? String(room.host) : null);
   const currentUserId = user?._id ? String(user._id) : null;
+  const hostId = room?.host?._id ? String(room.host._id) : (room?.host ? String(room.host) : null);
   const isHost = Boolean(hostId && currentUserId && hostId === currentUserId);
+
+  // Check if current user is an existing joined participant of the room
+  const isParticipant = Boolean(
+    isHost || (currentUserId && (room?.participants || []).some((p) => String(p._id || p) === currentUserId))
+  );
 
   // Fetch initial room state
   const loadRoom = async () => {
+    setLoading(true);
+    setLoadError(null);
+    setRoomNotFound(false);
+
     try {
       const res = await api.getRoom(roomCode);
       if (res.success && res.data) {
@@ -53,8 +80,12 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
         }
       }
     } catch (err) {
-      toastError(err.message || 'Error loading room state');
-      onLeaveRoom();
+      const msg = err.message || '';
+      if (msg.includes('not found') || msg.includes('404')) {
+        setRoomNotFound(true);
+      } else {
+        setLoadError(msg || 'Error loading room state');
+      }
     } finally {
       setLoading(false);
     }
@@ -64,11 +95,17 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
     loadRoom();
   }, [roomCode]);
 
+  // Update default joinName when user profile changes
+  useEffect(() => {
+    if (user?.name && user.name !== 'Manager' && !joinName) {
+      setJoinName(user.name);
+    }
+  }, [user]);
+
   // Socket.IO event listeners
   useEffect(() => {
-    if (!socket || !isConnected) return;
+    if (!socket || !isConnected || !roomCode) return;
 
-    // Join room room socket channel
     socket.emit('room:join', { roomCode });
 
     const handleRoomStateSync = (data) => {
@@ -134,12 +171,84 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
     };
   }, [socket, isConnected, roomCode]);
 
-  const handleCopyCode = () => {
-    const inviteLink = `${window.location.origin}#room/${roomCode}`;
-    navigator.clipboard.writeText(inviteLink);
-    setCopied(true);
-    toastSuccess('Invitation link copied to clipboard!');
-    setTimeout(() => setCopied(false), 2500);
+  // Dynamic Invitation URL generator using current window origin
+  const getInviteUrl = () => {
+    if (typeof window === 'undefined') return '';
+    return `${window.location.origin}/rooms/${roomCode}`;
+  };
+
+  const handleCopyInviteLink = async () => {
+    const url = getInviteUrl();
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedLink(true);
+      toastSuccess('Invitation link copied to clipboard!');
+      setTimeout(() => setCopiedLink(false), 2500);
+    } catch (_) {
+      toastError('Failed to copy link to clipboard');
+    }
+  };
+
+  const handleCopyOnlyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(roomCode);
+      setCopiedCode(true);
+      toastSuccess(`Room code ${roomCode} copied!`);
+      setTimeout(() => setCopiedCode(false), 2500);
+    } catch (_) {
+      toastError('Failed to copy room code');
+    }
+  };
+
+  const handleNativeShare = async () => {
+    const url = getInviteUrl();
+    const title = `IPL Auction Arena: ${room?.roomName || roomCode}`;
+    const text = room?.isPrivate
+      ? `Join my private IPL Auction Arena room '${room?.roomName}' (Code: ${roomCode}). Ask me for the passcode!`
+      : `Join my live IPL Auction Arena room '${room?.roomName}' (Code: ${roomCode})!`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, text, url });
+        toastSuccess('Invitation shared!');
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          handleCopyInviteLink();
+        }
+      }
+    } else {
+      handleCopyInviteLink();
+    }
+  };
+
+  // Direct joining handler for participants opening invitation links
+  const handleDirectJoin = async (e) => {
+    e?.preventDefault();
+    const nameToUse = (joinName || user?.name || 'Manager').trim();
+    if (!nameToUse) {
+      setJoinError('Please enter your manager display name');
+      return;
+    }
+    if (room?.isPrivate && !joinPasscode.trim()) {
+      setJoinError('This is a private room. Please enter the passcode.');
+      return;
+    }
+
+    setJoinLoading(true);
+    setJoinError('');
+
+    try {
+      await ensureSession(nameToUse);
+      const res = await api.joinRoom(roomCode, joinPasscode.trim() || null, nameToUse);
+      if (res.success && res.data) {
+        setRoom(res.data);
+        toastSuccess(`Joined ${room?.roomName || roomCode} successfully!`);
+      }
+    } catch (err) {
+      setJoinError(err.message || 'Failed to join auction room');
+    } finally {
+      setJoinLoading(false);
+    }
   };
 
   const handleClaimFranchise = async (franchiseCode) => {
@@ -176,7 +285,6 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
     if (!isHost) return;
     setActionLoading(true);
     try {
-      // Trigger via socket or REST
       if (socket && isConnected) {
         socket.emit('auction:start', { roomCode });
       } else {
@@ -188,15 +296,141 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
     }
   };
 
-  if (loading || !room) {
+  // State 1: Loading
+  if (loading) {
     return (
       <div className="py-24 text-center">
-        <div className="w-10 h-10 border-3 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-sm font-semibold text-slate-300">Connecting to auction lobby {roomCode}...</p>
+        <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-sm font-semibold text-slate-300">Connecting to auction arena {roomCode}...</p>
       </div>
     );
   }
 
+  // State 2: Room Not Found
+  if (roomNotFound || (!room && !loading)) {
+    return (
+      <div className="max-w-md mx-auto my-12 p-6 sm:p-8 bg-navy-900/90 border border-navy-800 rounded-3xl text-center shadow-2xl animate-fade-in">
+        <div className="w-14 h-14 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4 text-red-400">
+          <AlertCircle className="w-8 h-8" />
+        </div>
+        <h2 className="text-2xl font-black text-white font-['Teko'] uppercase tracking-wider mb-2">
+          Auction Room Not Found
+        </h2>
+        <p className="text-sm text-slate-400 mb-6">
+          Room with code <strong className="text-amber-400 font-mono">{roomCode}</strong> does not exist or has already ended.
+        </p>
+        <button
+          onClick={onLeaveRoom}
+          className="w-full py-3 px-5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all"
+        >
+          <Home className="w-4 h-4" />
+          <span>Browse Available Rooms</span>
+        </button>
+      </div>
+    );
+  }
+
+  // State 3: Direct Join Entrance (For participants opening shared invitation links who haven't entered yet)
+  if (!isParticipant && room) {
+    return (
+      <div className="max-w-lg mx-auto my-8 sm:my-14 p-6 sm:p-8 bg-gradient-to-b from-navy-900 to-navy-950 border border-blue-500/30 rounded-3xl shadow-2xl animate-fade-in text-left">
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-600/20 border border-blue-500/30 text-blue-400 text-xs font-mono font-bold uppercase tracking-wider mb-3">
+            <span>Room Code: {room.roomCode}</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-white font-['Teko'] uppercase tracking-wide">
+            {room.roomName}
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            Host: <strong className="text-slate-200">{room.hostName || 'Admin'}</strong> • {(room.participants || []).length} Managers Connected
+          </p>
+        </div>
+
+        {/* Room Privacy Notice */}
+        <div className={`p-3.5 rounded-xl border mb-5 flex items-center gap-3 text-xs ${
+          room.isPrivate
+            ? 'bg-amber-400/10 border-amber-400/20 text-amber-300'
+            : 'bg-blue-500/10 border-blue-500/20 text-blue-300'
+        }`}>
+          {room.isPrivate ? <Lock className="w-5 h-5 shrink-0 text-amber-400" /> : <Unlock className="w-5 h-5 shrink-0 text-blue-400" />}
+          <div>
+            <div className="font-bold uppercase tracking-wider">{room.isPrivate ? 'Private Room' : 'Public Room'}</div>
+            <div className="text-[11px] opacity-90">
+              {room.isPrivate ? 'This room requires a passcode to enter.' : 'Direct access enabled. Enter your manager name to join.'}
+            </div>
+          </div>
+        </div>
+
+        {joinError && (
+          <div className="p-3 rounded-xl bg-red-950/60 border border-red-500/40 text-red-300 text-xs mb-4 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+            <span>{joinError}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleDirectJoin} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+              Your Manager Display Name *
+            </label>
+            <div className="relative">
+              <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                required
+                maxLength={30}
+                value={joinName}
+                onChange={(e) => setJoinName(e.target.value)}
+                placeholder="e.g. MS Dhoni"
+                className="w-full bg-navy-950 border border-navy-700/80 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          {room.isPrivate && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                Room Passcode *
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="password"
+                  required
+                  value={joinPasscode}
+                  onChange={(e) => setJoinPasscode(e.target.value)}
+                  placeholder="Enter private room passcode"
+                  className="w-full bg-navy-950 border border-navy-700/80 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={joinLoading}
+              className="w-full py-3.5 px-6 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 hover:from-amber-400 hover:to-orange-400 text-navy-950 shadow-xl shadow-orange-950/40 transition-all flex items-center justify-center gap-2 disabled:opacity-50 min-h-[46px]"
+            >
+              <span>{joinLoading ? 'Entering Room...' : 'Enter Auction Room'}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </form>
+
+        <div className="text-center mt-4">
+          <button
+            onClick={onLeaveRoom}
+            className="text-xs text-slate-400 hover:text-white transition-colors"
+          >
+            Cancel & Return Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // State 4: Connected Room Lobby
   const userClaimedFranchise = (room.franchises || []).find(
     (f) => f.claimedBy && user?._id && String(f.claimedBy?._id || f.claimedBy) === String(user._id)
   );
@@ -204,7 +438,7 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
   const claimedCount = (room.franchises || []).filter((f) => f.claimedBy).length;
 
   return (
-    <div className="space-y-6 sm:space-y-8 py-4 sm:py-6 animate-fade-in">
+    <div className="space-y-6 sm:space-y-8 py-4 sm:py-6 animate-fade-in text-left">
       {/* Lobby Header Card */}
       <div className="bg-gradient-to-r from-blue-950/90 via-navy-900 to-indigo-950/90 border border-blue-500/20 rounded-3xl p-5 sm:p-7 shadow-xl">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -213,11 +447,11 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
               <span className="font-mono text-xs sm:text-sm font-bold text-amber-400 bg-amber-400/15 border border-amber-400/30 px-3 py-1 rounded-lg flex items-center gap-2">
                 <span>{room.roomCode}</span>
                 <button
-                  onClick={handleCopyCode}
+                  onClick={handleCopyOnlyCode}
                   className="hover:text-white transition-colors"
-                  title="Copy share link"
+                  title="Copy room code"
                 >
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
               </span>
 
@@ -265,6 +499,65 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
             >
               <LogOut className="w-4 h-4" />
               <span>Leave</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Prominent Invite Friends & Share Room Section */}
+      <div className="bg-gradient-to-r from-navy-900/90 via-navy-900/70 to-blue-950/80 border border-blue-500/30 rounded-2xl p-4 sm:p-5 shadow-lg">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Share2 className="w-4 h-4 text-amber-400" />
+              <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-white">
+                Invite Friends & Managers
+              </span>
+              {room.isPrivate && (
+                <span className="text-[10px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+                  Passcode Required
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-300">
+              Share this direct invitation link with friends on PC or mobile phone to join this live auction.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+            {/* Copy Room Code Button */}
+            <div className="flex items-center bg-navy-950 border border-navy-700/80 rounded-xl overflow-hidden shadow-inner text-xs">
+              <div className="px-3 py-2 text-slate-400 font-mono font-medium border-r border-navy-800">
+                CODE: <span className="text-amber-400 font-bold">{room.roomCode}</span>
+              </div>
+              <button
+                onClick={handleCopyOnlyCode}
+                className="px-3 py-2 bg-navy-900 hover:bg-navy-800 text-slate-300 hover:text-white flex items-center gap-1.5 font-semibold transition-all active:scale-95"
+                title="Copy Room Code"
+              >
+                {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedCode ? 'Copied' : 'Copy Code'}</span>
+              </button>
+            </div>
+
+            {/* Copy Invitation Link Button */}
+            <button
+              onClick={handleCopyInviteLink}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/20 transition-all active:scale-95"
+              title="Copy Direct Invitation URL"
+            >
+              {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Link2 className="w-3.5 h-3.5" />}
+              <span>{copiedLink ? 'Link Copied!' : 'Copy Invitation Link'}</span>
+            </button>
+
+            {/* Native Web Share API Button (Mobile & Desktop) */}
+            <button
+              onClick={handleNativeShare}
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-navy-950 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition-all active:scale-95"
+              title="Share Room with Friends"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Share</span>
             </button>
           </div>
         </div>

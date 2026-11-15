@@ -18,7 +18,8 @@
     "test:responsive": "node backend/tests/verify_responsiveness.js",
     "test:directplay": "node scripts/verify_guest_direct_play.js",
     "test:smoke": "node scripts/test_deployment_smoke.js",
-    "test:all": "npm run test:security && npm run test:multiplayer && npm run test:responsive && npm run test:directplay && npm run test:smoke"
+    "test:sharing": "node scripts/test_logos_and_sharing.js",
+    "test:all": "npm run test:security && npm run test:multiplayer && npm run test:responsive && npm run test:directplay && npm run test:smoke && npm run test:sharing"
   },
   "devDependencies": {
     "socket.io-client": "^4.8.4"

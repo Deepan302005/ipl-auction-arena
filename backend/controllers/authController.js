@@ -34,7 +34,7 @@ const getOrCreateGuestSession = async (req, res, next) => {
     displayName = displayName.trim().slice(0, 50);
 
     const validTeams = ['CSK', 'MI', 'RCB', 'KKR', 'DC', 'RR', 'SRH', 'GT', 'LSG', 'PBKS'];
-    const team = validTeams.includes(favoriteTeam) ? favoriteTeam : 'CSK';
+    const team = validTeams.includes(favoriteTeam) ? favoriteTeam : '';
 
     let user = null;
     const hasCandidateGuestId = Boolean(guestId && typeof guestId === 'string' && guestId.trim().length >= 6);

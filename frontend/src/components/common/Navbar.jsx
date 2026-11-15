@@ -140,7 +140,7 @@ export const Navbar = ({ currentView, onNavigate, onOpenCreateRoom }) => {
                   title="Click to change your manager display name"
                 >
                   <div className="w-6 h-6 rounded-lg bg-navy-950 flex items-center justify-center p-0.5 border border-navy-800">
-                    <TeamLogo franchise={user?.favoriteTeam || 'CSK'} size="xs" />
+                    <TeamLogo franchise={user?.favoriteTeam || null} size="xs" />
                   </div>
                   <div className="text-left">
                     <div className="text-xs font-semibold text-white truncate max-w-[100px] sm:max-w-[130px] leading-tight flex items-center gap-1">
@@ -172,7 +172,7 @@ export const Navbar = ({ currentView, onNavigate, onOpenCreateRoom }) => {
           <div className="flex items-center justify-between p-3 rounded-xl bg-navy-900/90 border border-navy-700/80 mb-3">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-navy-950 flex items-center justify-center p-1 border border-navy-800">
-                <TeamLogo franchise={user?.favoriteTeam || 'CSK'} size="sm" />
+                <TeamLogo franchise={user?.favoriteTeam || null} size="sm" />
               </div>
               <div className="min-w-0">
                 <div className="text-sm font-bold text-white truncate">{user?.name || 'Manager'}</div>

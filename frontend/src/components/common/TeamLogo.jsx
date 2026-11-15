@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
+import { User, Shield } from 'lucide-react';
 import { IPL_TEAMS } from '../../data/teamsData';
 
 /**
- * Normalizes any team code, id, or name to a standard franchise ID (e.g., 'csk', 'mi')
+ * Normalizes any team code, id, or name to a standard franchise ID (e.g., 'csk', 'mi', 'rcb')
+ * Returns null if identifier is missing or unrecognized. Never falls back to 'csk'.
  */
 export const normalizeTeamId = (teamIdentifier) => {
-  if (!teamIdentifier) return 'csk';
+  if (!teamIdentifier) return null;
   const clean = String(teamIdentifier).trim().toLowerCase();
-  
+  if (!clean) return null;
+
   const map = {
     csk: 'csk',
     'chennai super kings': 'csk',
@@ -45,24 +48,30 @@ export const normalizeTeamId = (teamIdentifier) => {
     lucknow: 'lsg'
   };
 
-  return map[clean] || 'csk';
+  return map[clean] || null;
 };
 
 export const getTeamLogoUrl = (teamIdentifier) => {
   const id = normalizeTeamId(teamIdentifier);
+  if (!id) return null;
   return `/assets/teams/${id}.png`;
 };
 
 export const TeamLogo = ({
   code,
+  franchise,
+  team: teamProp,
+  teamCode,
   size = 'md',
   className = '',
   showGlow = false,
   alt = ''
 }) => {
   const [imgError, setImgError] = useState(false);
-  const teamId = normalizeTeamId(code);
-  const team = IPL_TEAMS.find((t) => t.id === teamId || t.code === String(code).toUpperCase()) || IPL_TEAMS[0];
+
+  // Accept franchise, code, team, or teamCode interchangeably
+  const rawIdentifier = franchise || code || teamProp || teamCode;
+  const teamId = normalizeTeamId(rawIdentifier);
 
   const sizeClasses = {
     xs: 'w-6 h-6',
@@ -74,26 +83,56 @@ export const TeamLogo = ({
   };
 
   const containerSize = sizeClasses[size] || sizeClasses.md;
-  const logoSrc = getTeamLogoUrl(teamId);
-  const displayName = alt || team.name;
 
-  if (imgError) {
-    // Sensible fallback: stylish badge with team code on team primary color
+  // Case 1: No team specified -> Neutral Manager Avatar (Never fallback to CSK)
+  if (!teamId) {
     return (
       <div
-        className={`inline-flex items-center justify-center rounded-xl font-black font-['Teko'] text-center uppercase tracking-wider shrink-0 select-none shadow-md ${containerSize} ${className}`}
-        style={{
-          backgroundColor: team.brand.primaryColor,
-          color: team.brand.textColor || '#FFFFFF',
-          border: `1.5px solid ${team.brand.accentColor || '#FFFFFF'}`
-        }}
-        title={displayName}
+        className={`inline-flex items-center justify-center rounded-xl bg-navy-800/80 border border-navy-700/80 text-amber-400 shrink-0 select-none shadow-sm ${containerSize} ${className}`}
+        title={alt || 'Manager / Unassigned'}
       >
-        <span className="leading-none text-xs sm:text-sm font-bold">{team.code}</span>
+        <User className="w-1/2 h-1/2 text-amber-400/90" />
       </div>
     );
   }
 
+  // Find franchise profile from master data
+  const team = IPL_TEAMS.find(
+    (t) => t.id === teamId || t.code.toUpperCase() === String(rawIdentifier).toUpperCase()
+  );
+
+  const logoSrc = getTeamLogoUrl(teamId);
+  const displayName = alt || team?.name || String(rawIdentifier).toUpperCase();
+
+  // Case 2: Image loading error -> Stylish team badge with official code & colors (Never fallback to CSK)
+  if (imgError || !logoSrc) {
+    if (team) {
+      return (
+        <div
+          className={`inline-flex items-center justify-center rounded-xl font-black font-['Teko'] text-center uppercase tracking-wider shrink-0 select-none shadow-md ${containerSize} ${className}`}
+          style={{
+            backgroundColor: team.brand.primaryColor,
+            color: team.brand.textColor || '#FFFFFF',
+            border: `1.5px solid ${team.brand.accentColor || '#FFFFFF'}`
+          }}
+          title={displayName}
+        >
+          <span className="leading-none text-xs sm:text-sm font-bold">{team.code}</span>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className={`inline-flex items-center justify-center rounded-xl bg-navy-800 border border-navy-700 text-slate-400 shrink-0 select-none ${containerSize} ${className}`}
+        title={displayName}
+      >
+        <Shield className="w-1/2 h-1/2 text-slate-400" />
+      </div>
+    );
+  }
+
+  // Case 3: Proper Logo Display with aspect-ratio preservation
   return (
     <div
       className={`relative inline-flex items-center justify-center shrink-0 ${containerSize} ${
