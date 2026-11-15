@@ -21,7 +21,8 @@
     "test:sharing": "node scripts/test_logos_and_sharing.js",
     "test:season": "node scripts/test_season_and_expanded_database.js",
     "test:auction": "node scripts/test_historical_auction_nominees.js",
-    "test:all": "npm run test:security && npm run test:multiplayer && npm run test:responsive && npm run test:directplay && npm run test:smoke && npm run test:sharing && npm run test:season && npm run test:auction"
+    "test:csk": "node scripts/test_no_automatic_csk.js",
+    "test:all": "npm run test:security && npm run test:multiplayer && npm run test:responsive && npm run test:directplay && npm run test:smoke && npm run test:sharing && npm run test:season && npm run test:auction && npm run test:csk"
   },
   "devDependencies": {
     "socket.io-client": "^4.8.4"

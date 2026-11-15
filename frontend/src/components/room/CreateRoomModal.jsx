@@ -14,7 +14,6 @@ export const CreateRoomModal = ({ isOpen, onClose, onRoomCreated }) => {
   const [roomName, setRoomName] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [passcode, setPasscode] = useState('');
-  const [autoClaimTeam, setAutoClaimTeam] = useState('CSK');
   const [timerSeconds, setTimerSeconds] = useState(10);
   const [bidExtensionSeconds, setBidExtensionSeconds] = useState(5);
   const [incrementLadderType, setIncrementLadderType] = useState('official');
@@ -57,14 +56,13 @@ export const CreateRoomModal = ({ isOpen, onClose, onRoomCreated }) => {
 
     setLoading(true);
     try {
-      await ensureSession(nameToUse, autoClaimTeam);
+      await ensureSession(nameToUse);
       const res = await api.createRoom({
         roomName: roomName.trim(),
         displayName: nameToUse,
         hostName: nameToUse,
         isPrivate,
         passcode: isPrivate ? passcode.trim() : undefined,
-        autoClaimTeam: autoClaimTeam || undefined,
         settings: {
           timerSeconds: Number(timerSeconds),
           bidExtensionSeconds: Number(bidExtensionSeconds),
@@ -175,54 +173,19 @@ export const CreateRoomModal = ({ isOpen, onClose, onRoomCreated }) => {
           )}
         </div>
 
-        {/* Auto-Claim Franchise */}
-        <div>
-          <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-            Auto-Claim Franchise (Your Paddle)
-          </label>
-          <div className="flex items-center gap-2.5">
-            {autoClaimTeam ? (
-              <div className="w-12 h-12 rounded-xl bg-navy-950 border border-navy-700/80 flex items-center justify-center shrink-0 p-1.5 shadow-inner">
-                <TeamLogo franchise={autoClaimTeam} size="sm" />
-              </div>
-            ) : (
-              <div className="w-12 h-12 rounded-xl bg-navy-950 border border-navy-700/80 flex items-center justify-center shrink-0 text-slate-500">
-                <Shield className="w-5 h-5" />
-              </div>
-            )}
-            <select
-              value={autoClaimTeam}
-              onChange={(e) => setAutoClaimTeam(e.target.value)}
-              className="w-full bg-navy-950 border border-navy-700/80 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 cursor-pointer"
-            >
-              <option value="">None (Claim later in lobby)</option>
-              {IPL_TEAMS.map((t) => (
-                <option key={t.code} value={t.code} className="bg-navy-900 text-white">
-                  {t.name} ({t.code})
-                </option>
-              ))}
-            </select>
+        {/* Manual Franchise Selection Note */}
+        <div className="bg-navy-950/60 border border-navy-800 rounded-xl p-3.5 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-navy-900 border border-navy-700/80 flex items-center justify-center shrink-0 text-amber-400">
+            <Shield className="w-5 h-5 text-amber-400" />
           </div>
-          {/* Quick Franchise Chips */}
-          <div className="grid grid-cols-5 gap-1.5 mt-2.5">
-            {IPL_TEAMS.map((t) => {
-              const isSelected = autoClaimTeam === t.code;
-              return (
-                <button
-                  key={t.code}
-                  type="button"
-                  onClick={() => setAutoClaimTeam(t.code)}
-                  className={`p-1.5 rounded-lg flex items-center justify-center border transition-all ${
-                    isSelected
-                      ? 'bg-blue-600/30 border-amber-400 ring-1 ring-amber-400'
-                      : 'bg-navy-950/60 border-navy-800 hover:border-slate-600'
-                  }`}
-                  title={t.name}
-                >
-                  <TeamLogo franchise={t.code} size="xs" />
-                </button>
-              );
-            })}
+          <div className="text-xs">
+            <div className="font-bold text-white flex items-center gap-1.5">
+              <span>Manual Franchise Selection</span>
+              <span className="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded font-mono">10 Available</span>
+            </div>
+            <div className="text-slate-400 mt-0.5">
+              All 10 IPL franchise paddles begin unassigned. You and other participants manually claim your preferred team in the room lobby.
+            </div>
           </div>
         </div>
 

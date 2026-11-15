@@ -160,6 +160,16 @@ async function run() {
   }
   console.log(`   ✅ Player successfully claimed MI paddle!`);
 
+  // Host manually claims CSK
+  const hostClaim = await makeRequest(`/api/rooms/${roomCode}/claim`, 'POST', {
+    franchiseCode: 'CSK'
+  }, {
+    Authorization: `Bearer ${hostToken}`
+  });
+  if (hostClaim.status === 200) {
+    console.log(`   ✅ Host manually claimed CSK paddle!`);
+  }
+
   // STEP 7: HOST PERMISSIONS & SECURITY AUDIT
   console.log('\n7. Host Permissions & Security Enforcement:');
   // Non-host attempts to change settings -> should fail (403)

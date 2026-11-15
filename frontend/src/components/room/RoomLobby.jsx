@@ -642,15 +642,27 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
         <div className="flex items-center gap-2 flex-wrap">
           {(room.participants || []).map((p) => {
             const isParticipantHost = String(room.host) === String(p._id);
+            const claimed = (room.franchises || []).find(
+              (f) => f.claimedBy && String(f.claimedBy?._id || f.claimedBy) === String(p._id)
+            );
             return (
               <div
                 key={p._id}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-navy-950 border border-navy-800 text-xs text-white"
               >
-                <span className="relative flex h-2 w-2">
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
+                <div className="w-5 h-5 flex items-center justify-center shrink-0">
+                  <TeamLogo franchise={claimed?.code || null} size="xs" />
+                </div>
                 <span className="font-semibold">{p.name}</span>
+                {claimed ? (
+                  <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded border border-amber-400/20">
+                    {claimed.code}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-slate-400 bg-slate-800/60 px-1.5 py-0.5 rounded">
+                    Select a team
+                  </span>
+                )}
                 {isParticipantHost && (
                   <span className="text-[9px] font-bold text-amber-400 bg-amber-400/10 px-1 rounded">
                     HOST
@@ -661,6 +673,28 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
           })}
         </div>
       </div>
+
+      {/* Unselected Participant Guidance Banner */}
+      {!userClaimedFranchise && (
+        <div className="bg-gradient-to-r from-blue-950/80 via-navy-900 to-indigo-950/80 border border-blue-500/40 rounded-2xl p-4 sm:p-5 shadow-lg flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-xl bg-navy-950 border border-blue-500/30 flex items-center justify-center shrink-0 text-amber-400 shadow-inner">
+              <User className="w-6 h-6 text-amber-400" />
+            </div>
+            <div>
+              <div className="text-sm sm:text-base font-bold text-white flex items-center gap-2 flex-wrap">
+                <span>Select a team to participate</span>
+                <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded uppercase">
+                  Paddle Unassigned
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5">
+                All 10 IPL franchises are available. Click <strong>Claim Team</strong> on your preferred franchise card below to hold your bidding paddle.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 10 Franchise Slots Grid */}
       <div className="space-y-4">
@@ -737,6 +771,16 @@ export const RoomLobby = ({ roomCode, onLeaveRoom, onAuctionStarted }) => {
                           className="w-full py-2 px-3 rounded-xl text-xs font-bold text-red-400 bg-red-950/40 hover:bg-red-900/60 border border-red-500/30 transition-all min-h-[38px]"
                         >
                           Release Paddle
+                        </button>
+                      )}
+                      {isHost && !isClaimedByMe && (
+                        <button
+                          onClick={() => handleReleaseFranchise(slot.code)}
+                          disabled={actionLoading}
+                          className="w-full py-2 px-3 rounded-xl text-xs font-bold text-amber-400 bg-amber-950/40 hover:bg-amber-900/60 border border-amber-500/30 transition-all min-h-[38px]"
+                          title="Host control: Release this manager's franchise"
+                        >
+                          Release Manager
                         </button>
                       )}
                     </div>

@@ -148,6 +148,20 @@ async function run() {
     `Franchise claimed: MI`
   );
 
+  // STEP 5b: PC Host manually claims CSK franchise paddle
+  const hostClaimRes = await makeRequest(`/api/rooms/${roomCode}/claim`, 'POST', {
+    franchiseCode: 'CSK'
+  }, {
+    Authorization: `Bearer ${hostUser.token}`,
+    'User-Agent': pcUserAgent
+  });
+
+  assert(
+    'PC Host: Manually claimed CSK franchise paddle',
+    hostClaimRes.status === 200,
+    `Franchise claimed: CSK`
+  );
+
   // STEP 6: Connect WebSockets for PC and Android clients
   const pcSocket = ioClient(BASE_URL, {
     auth: { token: hostUser.token, guestId: hostUser.guestId, sessionSecret: hostUser.sessionSecret },

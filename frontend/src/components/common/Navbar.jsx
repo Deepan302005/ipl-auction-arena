@@ -176,7 +176,9 @@ export const Navbar = ({ currentView, onNavigate, onOpenCreateRoom }) => {
               </div>
               <div className="min-w-0">
                 <div className="text-sm font-bold text-white truncate">{user?.name || 'Manager'}</div>
-                <div className="text-xs text-slate-400">Direct Guest Player</div>
+                <div className="text-xs text-slate-400">
+                  {user?.favoriteTeam ? `${user.favoriteTeam} Manager` : 'Select a team'}
+                </div>
               </div>
             </div>
             <button

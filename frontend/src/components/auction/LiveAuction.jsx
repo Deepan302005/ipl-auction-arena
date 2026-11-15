@@ -450,9 +450,9 @@ export const LiveAuction = ({ roomCode, onAuctionEnded, onLeaveRoom }) => {
               </div>
             </div>
           ) : (
-            <span className="text-[11px] text-slate-400 bg-navy-950 px-2.5 py-1 rounded-xl border border-navy-800 flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5 text-blue-400" />
-              <span>Spectator</span>
+            <span className="text-[11px] text-slate-400 bg-navy-950 px-2.5 py-1 rounded-xl border border-navy-800 flex items-center gap-1.5" title="No franchise selected">
+              <User className="w-3.5 h-3.5 text-slate-400" />
+              <span>Select a team</span>
             </span>
           )}
 
@@ -973,13 +973,14 @@ export const LiveAuction = ({ roomCode, onAuctionEnded, onLeaveRoom }) => {
                     <Award className="w-6 h-6 text-white" />
                     <span>Your Bid is Leading</span>
                   </>
+                ) : !userFranchise ? (
+                  <>
+                    <User className="w-5 h-5 text-slate-400" />
+                    <span>Select a Team to Bid</span>
+                  </>
                 ) : (
                   <>
-                    {userFranchise ? (
-                      <TeamLogo franchise={userFranchise.code} size="sm" />
-                    ) : (
-                      <Gavel className="w-6 h-6 text-navy-950" />
-                    )}
+                    <TeamLogo franchise={userFranchise.code} size="sm" />
                     <span>
                       Raise to ₹{nextBidCr.toFixed(2)} Cr
                     </span>

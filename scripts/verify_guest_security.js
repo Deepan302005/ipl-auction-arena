@@ -281,6 +281,11 @@ async function run() {
   });
   const roomCode = pubRoomRes.data?.data?.roomCode;
 
+  // Guest 1 (Host) manually claims CSK franchise paddle
+  await makeRequest(`/api/rooms/${roomCode}/claim`, 'POST', { franchiseCode: 'CSK' }, {
+    Authorization: `Bearer ${g1.token}`
+  });
+
   // Guest 2 (Bob) joins public room and claims MI
   await makeRequest(`/api/rooms/${roomCode}/join`, 'POST', { displayName: g2.name }, {
     Authorization: `Bearer ${g2.token}`

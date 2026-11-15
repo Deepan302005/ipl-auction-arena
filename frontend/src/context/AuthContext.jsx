@@ -26,10 +26,10 @@ export const AuthProvider = ({ children }) => {
       const saved = localStorage.getItem('ipl_auth_user');
       if (saved) return JSON.parse(saved);
       const name = localStorage.getItem('ipl_manager_name') || 'Manager';
-      const team = localStorage.getItem('ipl_favorite_team') || 'CSK';
+      const team = localStorage.getItem('ipl_favorite_team') || null;
       return { _id: null, guestId: getOrCreateLocalGuestId(), name, favoriteTeam: team, isGuest: true };
     } catch (e) {
-      return { _id: null, guestId: getOrCreateLocalGuestId(), name: 'Manager', favoriteTeam: 'CSK', isGuest: true };
+      return { _id: null, guestId: getOrCreateLocalGuestId(), name: 'Manager', favoriteTeam: null, isGuest: true };
     }
   });
 
@@ -48,7 +48,7 @@ export const AuthProvider = ({ children }) => {
     let gid = getOrCreateLocalGuestId();
     let secret = getLocalGuestSecret();
     const displayName = customName || localStorage.getItem('ipl_manager_name') || user?.name || 'Manager';
-    const favoriteTeam = customTeam || localStorage.getItem('ipl_favorite_team') || user?.favoriteTeam || 'CSK';
+    const favoriteTeam = customTeam || localStorage.getItem('ipl_favorite_team') || user?.favoriteTeam || '';
 
     try {
       const res = await api.getOrCreateGuestSession({
@@ -72,7 +72,11 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('ipl_auth_token', res.data.token);
         localStorage.setItem('ipl_auth_user', JSON.stringify(u));
         localStorage.setItem('ipl_manager_name', u.name);
-        localStorage.setItem('ipl_favorite_team', u.favoriteTeam);
+        if (u.favoriteTeam) {
+          localStorage.setItem('ipl_favorite_team', u.favoriteTeam);
+        } else {
+          localStorage.removeItem('ipl_favorite_team');
+        }
         return { token: res.data.token, user: u };
       }
     } catch (err) {

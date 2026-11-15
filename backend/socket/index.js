@@ -76,7 +76,7 @@ const initSocket = (server, clientUrl) => {
           guestId: newGuestId,
           sessionSecret: newSecret,
           isGuest: true,
-          favoriteTeam: 'CSK'
+          favoriteTeam: ''
         });
       }
 

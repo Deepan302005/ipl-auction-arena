@@ -347,6 +347,14 @@ const registerRoomSocket = (io, socket) => {
         });
       }
 
+      // Update user favoriteTeam to claimed franchise
+      if (socket.user && (!socket.user.favoriteTeam || socket.user.favoriteTeam !== fCode)) {
+        try {
+          socket.user.favoriteTeam = fCode;
+          await socket.user.save();
+        } catch (_) {}
+      }
+
       const onlineUsers = getOnlineUserIds(code);
       const sanitizedRoom = getSanitizedRoomState(updatedRoom, onlineUsers);
 

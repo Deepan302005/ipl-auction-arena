@@ -68,7 +68,7 @@ const protect = async (req, res, next) => {
         guestId: newGuestId,
         sessionSecret,
         isGuest: true,
-        favoriteTeam: req.body?.autoClaimTeam || 'CSK'
+        favoriteTeam: ''
       });
       req.user = newGuest;
       return next();

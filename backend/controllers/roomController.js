@@ -394,9 +394,9 @@ const createRoom = async (req, res, next) => {
     // Build curated auction queue
     const auctionQueue = await buildAuctionQueue(configuredSettings);
 
-    // Initialize the 10 in-room franchise slots
+    // Initialize all 10 in-room franchise slots as unassigned (available for manual selection)
+    // Never auto-assign CSK or any franchise to the host or participants
     const franchises = teams.map((team) => {
-      const isClaimedByHost = autoClaimTeam && autoClaimTeam.toUpperCase() === team.code.toUpperCase();
       return {
         franchiseId: team.franchiseId,
         name: team.name,
@@ -405,8 +405,8 @@ const createRoom = async (req, res, next) => {
         brand: team.brand,
         totalPurseCr: startingPurseCr,
         remainingPurseCr: startingPurseCr,
-        claimedBy: isClaimedByHost ? req.user._id : null,
-        claimedByName: isClaimedByHost ? req.user.name : '',
+        claimedBy: null,
+        claimedByName: '',
         squad: []
       };
     });
@@ -758,6 +758,14 @@ const claimFranchise = async (req, res, next) => {
         success: false,
         message: `Franchise '${franchiseCode}' was claimed by another participant just now`
       });
+    }
+
+    // Update user's favoriteTeam to claimed franchise if not already set
+    if (req.user && (!req.user.favoriteTeam || req.user.favoriteTeam !== targetSlot.code)) {
+      try {
+        req.user.favoriteTeam = targetSlot.code;
+        await req.user.save();
+      } catch (_) {}
     }
 
     return res.status(200).json({

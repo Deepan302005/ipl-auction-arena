@@ -85,10 +85,15 @@ export const DashboardPage = ({ onOpenCreateRoom, onJoinRoom }) => {
               <h1 className="text-xl sm:text-2xl font-bold text-white">
                 Welcome, {user?.name || 'Manager'}
               </h1>
-              {user?.favoriteTeam && (
+              {user?.favoriteTeam ? (
                 <span className="text-xs font-bold text-amber-400 bg-amber-400/15 border border-amber-400/30 px-2.5 py-1 rounded-full uppercase tracking-wider font-mono flex items-center gap-1.5 shadow-sm">
                   <TeamLogo franchise={user.favoriteTeam} size="xs" />
                   <span>{user.favoriteTeam}</span>
+                </span>
+              ) : (
+                <span className="text-xs text-slate-400 bg-navy-950 border border-navy-800 px-2.5 py-1 rounded-full font-medium flex items-center gap-1.5 shadow-sm">
+                  <User className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Select a team</span>
                 </span>
               )}
             </div>
